@@ -8,7 +8,8 @@ import Instructions from "./Instructions";
 import AiDraft from "./AiDraft";
 import EffectForm, { type Selection } from "./EffectForm";
 import { DoneBox, EXTRACTABLE } from "./CodeTab";
-import { deleteEffect } from "@/lib/actions";
+import { deleteEffect, saveEffect } from "@/lib/actions";
+import { computeEffect } from "@/lib/effects";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS, TIERS } from "@/lib/config";
 import { STATUS_LABEL } from "@/lib/status";
 import Ago from "./Ago";
@@ -16,8 +17,18 @@ import type { Candidate, DraftResult } from "@/lib/ai";
 import type { Task } from "@/lib/steps";
 import type { Coding, Effect, Member, Paper, Standing } from "@/lib/types";
 
-type Editing = { mode: "new" } | { mode: "edit"; effect: Effect } | { mode: "draft"; initial: Record<string, any>; index: number } | null;
-type Drafts = { candidates: Candidate[]; summary: string; source: string; model: string };
+type Editing = { mode: "new" } | { mode: "edit"; effect: Effect } | { mode: "draft"; initial: Record<string, any>; id: string } | null;
+
+// Rows the AI proposed. They stay listed (in this browser, per paper) until someone clears the
+// list, so switching tabs or reloading does not lose a read, and several reads add up.
+type DraftItem = { id: string; c: Candidate; status: "new" | "added" | "skipped"; incomplete?: boolean; error?: string };
+type DraftStore = { items: DraftItem[]; reads: { source: string; summary: string; at: string; found: number }[] };
+const EMPTY: DraftStore = { items: [], reads: [] };
+
+function signature(c: Candidate): string {
+  const { confidence: _a, caution: _b, quote: _c, ...rest } = c as any;
+  return JSON.stringify(rest);
+}
 
 function candidateToInitial(c: Candidate): Record<string, any> {
   const v: Record<string, any> = { ...c };
@@ -26,15 +37,19 @@ function candidateToInitial(c: Candidate): Record<string, any> {
   return v;
 }
 
+function isIncomplete(c: Candidate): boolean {
+  return computeEffect({ ...(candidateToInitial(c) as any), higher_is_worse: Boolean(c.higher_is_worse) }).delta === null;
+}
+
 export default function EffectsTab({ paper, me, members, effects, coding, s, task, aiReady, goCode, selection, clearSelection, showText }: {
   paper: Paper; me: Member; members: Member[]; effects: Effect[]; coding: Coding | null; s: Standing; task: Task | null; aiReady: boolean;
   goCode: () => void; selection: Selection | null; clearSelection: () => void; showText: () => void;
 }) {
   const [editing, setEditing] = useState<Editing>(null);
   const [showAi, setShowAi] = useState(false);
-  const [drafts, setDrafts] = useState<Drafts | null>(null);
-  const [used, setUsed] = useState<number[]>([]);
-  const [skipped, setSkipped] = useState<number[]>([]);
+  const [store, setStore] = useState<DraftStore>(EMPTY);
+  const [loaded, setLoaded] = useState(false);
+  const [adding, setAdding] = useState("");
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
   const router = useRouter();
@@ -42,10 +57,43 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
   const draftsRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
 
+  const storeKey = "wb_drafts_" + paper.id;
+  useEffect(() => {
+    try { const raw = localStorage.getItem(storeKey); if (raw) setStore(JSON.parse(raw)); } catch { /* storage unavailable */ }
+    setLoaded(true);
+  }, [storeKey]);
+  useEffect(() => {
+    if (!loaded) return;
+    try { if (store.items.length) localStorage.setItem(storeKey, JSON.stringify(store)); else localStorage.removeItem(storeKey); } catch { /* storage unavailable */ }
+  }, [store, loaded, storeKey]);
+  const patch = (id: string, p: Partial<DraftItem>) => setStore((st) => ({ ...st, items: st.items.map((it) => (it.id === id ? { ...it, ...p } : it)) }));
+
   useEffect(() => { if (selection && editing === null) setEditing({ mode: "new" }); }, [selection]); // eslint-disable-line
-  // Bring the new drafts, or the opened form, into view so nothing happens off screen.
-  useEffect(() => { if (drafts && !showAi && editing === null) draftsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [drafts, showAi, editing]);
+  // Bring the opened form into view so nothing happens off screen.
   useEffect(() => { if (editing !== null) formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [editing]);
+
+  function addRead(r: Extract<DraftResult, { ok: true }>) {
+    setStore((st) => {
+      const seen = new Set(st.items.map((it) => signature(it.c)));
+      const fresh = r.candidates.filter((c) => !seen.has(signature(c))).map((c, k) => ({ id: `${Date.now().toString(36)}-${k}`, c, status: "new" as const }));
+      return { items: [...st.items, ...fresh], reads: [...st.reads, { source: r.source, summary: r.summary, at: new Date().toISOString(), found: r.candidates.length }] };
+    });
+    setShowAi(false);
+    setTimeout(() => draftsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  }
+
+  async function addDirect(items: DraftItem[]) {
+    setErr("");
+    for (let k = 0; k < items.length; k++) {
+      const it = items[k];
+      setAdding(items.length > 1 ? `Adding ${k + 1} of ${items.length}...` : "Adding...");
+      const r = await saveEffect(paper.id, null, candidateToInitial(it.c), true);
+      if (r.ok) patch(it.id, { status: "added", incomplete: isIncomplete(it.c), error: undefined });
+      else patch(it.id, { error: r.error });
+    }
+    setAdding("");
+    router.refresh();
+  }
 
   const level = coding?.reporting_level || null;
 
@@ -59,20 +107,21 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
     });
   }
   function done() {
-    if (editing?.mode === "draft") setUsed((u) => [...u, editing.index]);
+    if (editing?.mode === "draft") patch(editing.id, { status: "added", incomplete: false, error: undefined });
     setEditing(null);
     clearSelection();
     router.refresh();
   }
   const fmt = (v: number | null) => (v === null ? "" : v.toFixed(2));
-  const remaining = drafts ? drafts.candidates.map((c, i) => ({ c, i })).filter(({ i }) => !used.includes(i) && !skipped.includes(i)) : [];
+  const open = store.items.filter((it) => it.status === "new");
+  const addedCount = store.items.filter((it) => it.status === "added").length;
 
   return (
     <div className="stack">
       <Instructions id="effects" title="What to do: copy the numbers by group">
         <ol>
           <li>Find the results split by group (Black vs White, Latinx vs White, or lower vs higher income): the Results section, the tables, or the online supplement.</li>
-          <li><b>Fast way:</b> click <b>Draft the rows with AI</b>, paste a screenshot of the table, and check each draft row against the paper before saving it.</li>
+          <li><b>Fast way:</b> click <b>Draft the rows with AI</b> and paste a screenshot of a table. Check each draft row against the paper, then <b>Add</b> it (or <b>Add all</b>). Read more tables and their rows join the same list.</li>
           <li><b>By hand:</b> click <b>Add a row by hand</b>. To copy numbers quickly, <button className="link" onClick={showText}>switch the left side to Text</button>, select the sentence or table row with your mouse, then click each number in the yellow box.</li>
           <li>Check that the green Result box shows a number, then click <b>Save effect</b>. One row per outcome, per group comparison, per time point.</li>
           <li>When every row is in, click <b>Mark this paper done</b>.</li>
@@ -106,19 +155,30 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
       {showAi && editing === null && (
         <AiDraft paperId={paper.id} pageCount={(paper.pages || []).length}
           onClose={() => setShowAi(false)}
-          onResult={(r) => { setDrafts({ candidates: r.candidates, summary: r.summary, source: r.source, model: r.model }); setUsed([]); setSkipped([]); setShowAi(false); }} />
+          onResult={addRead} />
       )}
 
-      {drafts && !showAi && editing === null && (
+      {(store.items.length > 0 || store.reads.length > 0) && (
         <div className="draftbox" ref={draftsRef}>
           <div className="aihead">
-            <b>The AI found {drafts.candidates.length} {drafts.candidates.length === 1 ? "row" : "rows"}</b> <span className="muted">from {drafts.source}</span>
-            <button className="link" style={{ marginLeft: "auto" }} onClick={() => setDrafts(null)}>clear</button>
+            <b>AI-drafted rows: {store.items.length}</b>
+            <span className="muted">{addedCount} added, {open.length} still to check</span>
+            <span style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+              {open.length > 1 && <button className="primary small" disabled={Boolean(adding) || pending} onClick={() => { if (confirm(`Add all ${open.length} rows that are still open? Each is saved as an AI draft with your name as the checker; you can edit or delete any of them in the table below.`)) addDirect(open); }}>Add all {open.length}</button>}
+              <button className="link" disabled={Boolean(adding)} onClick={() => { if (confirm("Clear this list of AI-drafted rows? Rows already added stay in the table.")) setStore(EMPTY); }}>clear list</button>
+            </span>
           </div>
-          {drafts.summary && <p style={{ margin: "6px 0 10px" }}>{drafts.summary}</p>}
-          {drafts.candidates.length > 0 && remaining.length === 0 && <div className="note good" style={{ margin: 0 }}>Every draft row has been handled.</div>}
-          {remaining.map(({ c, i }) => <DraftCard key={i} c={c} onUse={() => setEditing({ mode: "draft", initial: candidateToInitial(c), index: i })} onSkip={() => setSkipped((x) => [...x, i])} />)}
-          {remaining.length > 0 && <p className="muted" style={{ margin: "10px 0 0" }}>Check each row against the paper. Use this row opens the form filled in; nothing is saved until you click Save effect.</p>}
+          {store.reads.map((r, k) => (
+            <p key={k} className="readline">Read {k + 1}, from {r.source}: found {r.found} {r.found === 1 ? "row" : "rows"}.{r.summary ? " " + r.summary : ""}</p>
+          ))}
+          {adding && <div className="note info" style={{ margin: "8px 0 0" }}>{adding}</div>}
+          {store.items.map((it) => it.status === "new"
+            ? <DraftCard key={it.id} c={it.c} error={it.error} busy={Boolean(adding) || pending} editingThis={editing?.mode === "draft" && editing.id === it.id}
+                onAdd={() => addDirect([it])}
+                onEdit={() => setEditing({ mode: "draft", initial: candidateToInitial(it.c), id: it.id })}
+                onSkip={() => patch(it.id, { status: "skipped" })} />
+            : <DraftDone key={it.id} it={it} onUndo={() => patch(it.id, { status: "new" })} />)}
+          {open.length > 0 && <p className="muted" style={{ margin: "10px 0 0" }}>Check each row against the paper. <b>Add</b> saves it as shown; <b>Edit, then add</b> opens the form first. Want more rows? Click <b>Draft the rows with AI</b> again with another table; the new rows join this list.</p>}
         </div>
       )}
 
@@ -176,10 +236,23 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
   );
 }
 
-function DraftCard({ c, onUse, onSkip }: { c: Candidate; onUse: () => void; onSkip: () => void }) {
+function DraftDone({ it, onUndo }: { it: DraftItem; onUndo: () => void }) {
+  const c = it.c;
+  const label = `${c.outcome_name || OUTCOME_FAMILIES[c.outcome_family]} (${c.timepoint || "post-test"}), ${c.group_dimension === "other" ? `${c.marginalized_group} vs ${c.comparison_group}` : GROUP_DIMENSIONS[c.group_dimension]}`;
+  return (
+    <div className={"draftdone " + it.status}>
+      {it.status === "added" ? <span className="ok">&#10003; Added</span> : <span className="muted">Skipped</span>}
+      <span>{label}</span>
+      {it.status === "added" && it.incomplete && <span className="pill split">incomplete: some numbers are missing, finish it with Edit in the table below</span>}
+      {it.status === "skipped" && <button className="link" onClick={onUndo}>undo</button>}
+    </div>
+  );
+}
+
+function DraftCard({ c, error, busy, editingThis, onAdd, onEdit, onSkip }: { c: Candidate; error?: string; busy: boolean; editingThis: boolean; onAdd: () => void; onEdit: () => void; onSkip: () => void }) {
   const n = (v: number | null) => (v === null ? <span className="muted">?</span> : String(v));
   return (
-    <div className={"draft " + c.confidence}>
+    <div className={"draft " + c.confidence + (editingThis ? " editing" : "")}>
       <div className="draft-top">
         <span className={"pill conf-" + c.confidence}>{c.confidence === "high" ? "looks clear" : c.confidence === "medium" ? "check the labels" : "unsure, check carefully"}</span>
         <b>{c.outcome_name || OUTCOME_FAMILIES[c.outcome_family]}</b> <span className="muted">({c.timepoint || "post-test"})</span>
@@ -206,10 +279,16 @@ function DraftCard({ c, onUse, onSkip }: { c: Candidate; onUse: () => void; onSk
       {c.tier === "interaction" && <div className="mono">interaction {n(c.int_coef)} (SE {n(c.int_se)}), {c.int_scale}</div>}
       <div className="sub">{c.page ? `p. ${c.page} ` : ""}{c.source_label}{c.quote ? <> &middot; <i>&quot;{c.quote.length > 220 ? c.quote.slice(0, 220) + "..." : c.quote}&quot;</i></> : ""}</div>
       {c.caution && <div className="caution">AI notes: {c.caution}</div>}
-      <div className="row mt" style={{ gap: 8 }}>
-        <button className="primary" onClick={onUse}>Use this row</button>
-        <button onClick={onSkip}>Skip</button>
-      </div>
+      {error && <div className="err">Could not add: {error}</div>}
+      {editingThis ? (
+        <div className="note info" style={{ marginBottom: 0 }}>Open in the form below. Save it there to add it.</div>
+      ) : (
+        <div className="row mt" style={{ gap: 8 }}>
+          <button className="primary" onClick={onAdd} disabled={busy}>Add</button>
+          <button onClick={onEdit} disabled={busy}>Edit, then add</button>
+          <button onClick={onSkip} disabled={busy}>Skip</button>
+        </div>
+      )}
     </div>
   );
 }
