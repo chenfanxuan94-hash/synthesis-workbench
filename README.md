@@ -1,6 +1,8 @@
-# Synthesis Workbench
+# CHHSR Meta Analysis Portal
 
 One place for the whole review: library, screening, design-feature coding, effect extraction, and the analysis-ready dataset for the school-based behavioral health gap synthesis.
+
+The code folder and the GitHub repository are still called `synthesis-workbench`. Only the name shown on screen changed, so nothing needs to be renamed or reconnected.
 
 Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private storage), Vercel. No client-side database access; the service role key stays on the server.
 
@@ -38,7 +40,7 @@ git add -A
 ```
 
 ```
-git commit -m "Synthesis Workbench"
+git commit -m "CHHSR Meta Analysis Portal"
 ```
 
 Create an empty repository on GitHub, then:

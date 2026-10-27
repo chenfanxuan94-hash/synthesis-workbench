@@ -9,13 +9,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { error } = await searchParams;
   const needsCode = Boolean(process.env.TEAM_CODE);
   return (
-    <main>
+    <main className="center">
+      <h1 className="brand-title">CHHSR Meta Analysis Portal</h1>
+      <p className="hello">Click your name to begin. No password needed.</p>
       <div className="login">
-        <div className="band">
-          <h1>Synthesis Workbench</h1>
-          <p>School-based behavioral health and the gaps between groups of students</p>
-        </div>
-        <div className="inner">
+        <div className="panel">
           {error === "code" && <div className="err">The team code was not correct.</div>}
           {error === "member" && <div className="err">That name was not found.</div>}
           <form action={login}>
@@ -28,7 +26,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 <input type="password" name="code" required style={{ width: "100%" }} />
               </div>
             )}
-            <p><b>Who are you?</b> Click your name. No password is needed.</p>
             {members.map((m) => (
               <button key={m.id} type="submit" name="member" value={m.id} className="name">
                 <span className="stepnum">{m.initials}</span>
@@ -36,11 +33,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               </button>
             ))}
           </form>
-          <div className="note info mt">
-            <b>First time here?</b> After you click your name, press <b>Start here</b> in the maroon bar at the top. It explains everything in about fifteen minutes.
-          </div>
           <details className="mt">
-            <summary><b>Your name is not on the list?</b></summary>
+            <summary className="muted" style={{ cursor: "pointer" }}>Your name is not on the list?</summary>
             <form action={addMember} className="row mt">
               <input type="text" name="name" placeholder="Your full name" required />
               <button type="submit">Add me</button>

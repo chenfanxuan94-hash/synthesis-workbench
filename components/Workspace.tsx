@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Help from "./Help";
 import EffectForm, { type Selection } from "./EffectForm";
+import PdfFrame from "./PdfFrame";
+import DropZone from "./DropZone";
 import {
   saveScreening, resolveConflict, saveCoding, markCodingFinal,
   verifyEffect, deleteEffect, updatePaper, deletePaper, signedUpload, finalizeUpload, reExtractText,
@@ -26,13 +28,14 @@ type Props = {
   codings: Coding[];
   effects: Effect[];
   task: Task | null;
+  left?: number | null;
 };
 
 type PanelTab = "screen" | "code" | "effects" | "info";
 
 const EXTRACTABLE = REPORTING_LEVELS.slice(2);
 
-export default function Workspace({ paper, me, members, screenings, codings, effects, task }: Props) {
+export default function Workspace({ paper, me, members, screenings, codings, effects, task, left }: Props) {
   const status = paperStatus(paper, screenings);
   const [viewer, setViewer] = useState<"pdf" | "text">(paper.pdf_path ? "pdf" : "text");
   const [tab, setTab] = useState<PanelTab>(() => {
@@ -73,8 +76,8 @@ export default function Workspace({ paper, me, members, screenings, codings, eff
         {status === "abstract_pending"
           ? "That is fine for step 2: the title and abstract above are all you need."
           : "Full-text screening, coding, and extraction need the PDF."}{" "}
-        To add it, find the paper (Google Scholar, the university library, or ask Fan), then upload it in the Info tab.
-        <div className="mt"><button className="primary small" onClick={() => setTab("info")}>Open the Info tab</button></div>
+        To add it, find the paper (Google Scholar, the university library, or ask Fan), then upload it in the PDF and details tab.
+        <div className="mt"><button className="primary small" onClick={() => setTab("info")}>Open PDF and details</button></div>
       </div>
     </div>
   );
@@ -86,16 +89,24 @@ export default function Workspace({ paper, me, members, screenings, codings, eff
         <div className="a">{paper.authors || ""}{paper.year ? ` (${paper.year})` : ""}{paper.journal ? `. ${paper.journal}` : ""}</div>
         {paper.abstract
           ? <div className="txt">{paper.abstract}</div>
-          : <div className="note warn">This record has no abstract. Decide from the title, or look the paper up online and paste its abstract in the Info tab. When in doubt, include.</div>}
+          : <div className="note warn">This record has no abstract. Decide from the title, or look the paper up online and paste its abstract in the PDF and details tab. When in doubt, include.</div>}
       </div>
       {noPdf}
     </>
   );
 
+  // While working a task, only that task's tab and the PDF tab are shown, so nothing else competes
+  // for attention. Browsing a paper from All papers shows every tab.
+  const tabs: PanelTab[] = task
+    ? Array.from(new Set<PanelTab>([taskTab(task), tab, "info"]))
+    : ["screen", "code", "effects", "info"];
+  const tabLabel = (t: PanelTab) =>
+    t === "screen" ? "Screen" : t === "code" ? "Code" : t === "effects" ? (task ? "Effects" : `Effects (${effects.length})`) : "PDF and details";
+
   return (
     <div className="split">
       <div className="pane left">
-        <div className="head" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="head">
           <div className="tabs">
             <button className={viewer === "pdf" ? "on" : ""} onClick={() => setViewer("pdf")}>PDF</button>
             <button className={viewer === "text" ? "on" : ""} onClick={() => setViewer("text")}>Text</button>
@@ -104,10 +115,13 @@ export default function Workspace({ paper, me, members, screenings, codings, eff
           {viewer === "text" && pages.length > 0 && (
             <input type="search" placeholder="Find a word in the paper" value={find} onChange={(e) => setFind(e.target.value)} style={{ marginLeft: "auto", width: 240 }} />
           )}
+          {viewer === "pdf" && paper.pdf_path && (
+            <a className="newtab" href={`/api/pdf/${paper.id}`} target="_blank" rel="noreferrer">Open in new tab &#8599;</a>
+          )}
         </div>
         <div className={"body" + (viewer === "pdf" && paper.pdf_path ? " noPad" : "")} style={viewer === "pdf" && !paper.pdf_path ? { padding: 0 } : undefined}>
           {viewer === "pdf" ? (
-            paper.pdf_path ? <iframe className="pdf" src={`/api/pdf/${paper.id}`} title="PDF" /> : leftEmpty
+            paper.pdf_path ? <PdfFrame id={paper.id} version={paper.pdf_path} /> : leftEmpty
           ) : abstractLeft ? (
             leftEmpty
           ) : (
@@ -133,23 +147,25 @@ export default function Workspace({ paper, me, members, screenings, codings, eff
 
       <div className="pane">
         <div className="head">
+          <div className="topline">
+            <Link href="/" className="back"><span aria-hidden="true">&larr;</span> Home</Link>
+            {step && <Link href={`/work/${task}?after=${paper.id}`}>Skip this paper</Link>}
+            <span className="who">{me.name}</span>
+          </div>
           {step && (
-            <div className="row mb" style={{ alignItems: "center", gap: 10 }}>
-              <span className="pill you">Step {step.n}: {step.title}</span>
-              <Link href={`/work/${task}?after=${paper.id}`}>Skip this paper</Link>
-              <Link href="/">Back to dashboard</Link>
+            <div className="eyebrow">
+              Step {step.n} &middot; {step.title}
+              {typeof left === "number" && <> &middot; {left === 0 ? "none left for you" : `${left} left for you`}</>}
             </div>
           )}
           <div className="title">{paper.title || "(untitled)"}</div>
-          <div>
-            {paper.first_author ? `${paper.first_author} ` : ""}{paper.year ?? ""}{paper.journal ? ` - ${paper.journal}` : ""}{" "}
-            <span className={"pill " + status}>{STATUS_LABEL[status]}</span>
+          <div className="meta">
+            {[paper.first_author, paper.year, paper.journal].filter(Boolean).join(" - ")}
+            {!step && <span className={"pill " + status}>{STATUS_LABEL[status]}</span>}
           </div>
           <div className="tabs mt">
-            {(["screen", "code", "effects", "info"] as PanelTab[]).map((t) => (
-              <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-                {t === "screen" ? "Screen" : t === "code" ? "Code" : t === "effects" ? `Effects (${effects.length})` : "Info and PDF upload"}
-              </button>
+            {tabs.map((t) => (
+              <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>{tabLabel(t)}</button>
             ))}
           </div>
         </div>
@@ -157,10 +173,10 @@ export default function Workspace({ paper, me, members, screenings, codings, eff
           {tab === "screen" && <ScreenTab paper={paper} me={me} members={members} screenings={screenings} status={status} task={task} goInfo={() => setTab("info")} abstractLeft={abstractLeft} />}
           {tab === "code" && <CodeTab paper={paper} me={me} members={members} codings={codings} status={status} task={task} />}
           {tab === "effects" && (
-            <EffectsTab paper={paper} me={me} effects={effects} codings={codings} status={status} task={task}
+            <EffectsTab paper={paper} me={me} effects={effects} codings={codings} status={status} task={task} goCode={() => setTab("code")}
               selection={selection} clearSelection={() => setSelection(null)} nameOf={nameOf} showText={() => setViewer("text")} />
           )}
-          {tab === "info" && <InfoTab paper={paper} />}
+          {tab === "info" && <InfoTab paper={paper} onAttached={() => setViewer("pdf")} />}
         </div>
       </div>
     </div>
@@ -184,14 +200,28 @@ function highlight(text: string, q: string) {
 }
 
 // Collapsible instruction box. Remembers per step whether the reader hid it.
-function Instructions({ id, n, title, children }: { id: string; n: number; title: string; children: React.ReactNode }) {
+const counted = new Set<string>();
+function Instructions({ id, title, children }: { id: string; n?: number; title: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true);
   useEffect(() => {
-    try { if (localStorage.getItem("wb_hide_" + id) === "1") setOpen(false); } catch { /* storage unavailable */ }
+    try {
+      // Open for the first three papers a person works on at this step, then tucked into one line.
+      // Their own hide or show choice always wins.
+      const key = id + (typeof location !== "undefined" ? location.pathname : "");
+      const first = !counted.has(key);
+      counted.add(key);
+      const before = Number(localStorage.getItem("wb_seen_" + id) || "0");
+      if (first) localStorage.setItem("wb_seen_" + id, String(before + 1));
+      const seen = first ? before + 1 : before;
+      const pref = localStorage.getItem("wb_hide_" + id);
+      if (pref === "1") setOpen(false);
+      else if (pref === "0") setOpen(true);
+      else setOpen(seen <= 3);
+    } catch { /* storage unavailable */ }
   }, [id]);
   return (
     <details
-      className="guide-card"
+      className="howto"
       open={open}
       onToggle={(e) => {
         const o = (e.currentTarget as HTMLDetailsElement).open;
@@ -199,7 +229,7 @@ function Instructions({ id, n, title, children }: { id: string; n: number; title
         try { localStorage.setItem("wb_hide_" + id, o ? "0" : "1"); } catch { /* storage unavailable */ }
       }}
     >
-      <summary><span className="stepnum small">{n}</span>{title}</summary>
+      <summary>{title}</summary>
       {children}
     </details>
   );
@@ -311,7 +341,7 @@ function ScreenTab({ paper, me, members, screenings, status, task, goInfo, abstr
       {fulltextActive && !paper.pdf_path && (
         <div className="note warn">
           <b>This paper has no PDF yet.</b> Find it (Google Scholar, the library, or ask Fan) and upload it before deciding.
-          <div className="mt"><button className="small primary" onClick={goInfo}>Upload the PDF in the Info tab</button></div>
+          <div className="mt"><button className="small primary" onClick={goInfo}>Upload the PDF</button></div>
         </div>
       )}
 
@@ -324,7 +354,7 @@ function ScreenTab({ paper, me, members, screenings, status, task, goInfo, abstr
       ) : (
         showAbstractOpen && (
           <div className="note warn">
-            This record has no abstract. Decide from the title, or look the paper up online and paste its abstract in the Info tab. When in doubt, include.
+            This record has no abstract. Decide from the title, or look the paper up online and paste its abstract in the PDF and details tab. When in doubt, include.
           </div>
         )
       )}
@@ -599,8 +629,8 @@ function CodeTab({ paper, me, members, codings, status, task }: { paper: Paper; 
 
 // ---------------- Effects ----------------
 
-function EffectsTab({ paper, me, effects, codings, status, task, selection, clearSelection, nameOf, showText }: {
-  paper: Paper; me: Member; effects: Effect[]; codings: Coding[]; status: PaperStatus; task: Task | null;
+function EffectsTab({ paper, me, effects, codings, status, task, goCode, selection, clearSelection, nameOf, showText }: {
+  paper: Paper; me: Member; effects: Effect[]; codings: Coding[]; status: PaperStatus; task: Task | null; goCode: () => void;
   selection: Selection | null; clearSelection: () => void; nameOf: (id: string | null) => string; showText: () => void;
 }) {
   const [editing, setEditing] = useState<Effect | null | "new">(null);
@@ -653,12 +683,12 @@ function EffectsTab({ paper, me, effects, codings, status, task, selection, clea
         <div className="note warn">This paper has not passed screening yet ({STATUS_LABEL[status]}). Numbers are normally copied only for included papers.</div>
       )}
       {!verifying && status === "included" && !coding && (
-        <div className="note warn">Code this paper first (Code tab). Section D of the coding tells us whether there are numbers to copy.</div>
+        <div className="note warn">Code this paper first. Section D of the coding tells us whether there are numbers to copy. <button className="link" onClick={goCode}>Open the Code tab</button></div>
       )}
       {!verifying && coding && level && !EXTRACTABLE.includes(level) && (
         <div className="note info">
           The coding says: <b>{level}</b>. That means there are probably no numbers by group to copy from this paper.
-          If you do find results by group, change the reporting level in the Code tab first.
+          If you do find results by group, <button className="link" onClick={goCode}>change the reporting level in the Code tab</button> first.
         </div>
       )}
 
@@ -682,26 +712,26 @@ function EffectsTab({ paper, me, effects, codings, status, task, selection, clea
           <h3>Rows entered for this paper</h3>
           <table className="grid">
             <thead>
-              <tr><th>Outcome</th><th>Groups</th><th>Gap change<Help text="delta, with its standard error in brackets. Positive means the marginalized group gained more, so the gap got smaller. Negative means the gap got bigger." /></th><th>Where</th><th>Entered by</th><th>Checked</th><th></th></tr>
+              <tr><th>Outcome</th><th>Groups</th><th>Gap change<Help text="delta, with its standard error in brackets. Positive means the marginalized group gained more, so the gap got smaller. Negative means the gap got bigger." /></th><th>Checked</th><th></th></tr>
             </thead>
             <tbody>
               {effects.map((e) => (
                 <tr key={e.id}>
-                  <td>{OUTCOME_FAMILIES[e.outcome_family]}<br />{e.outcome_name || ""}{e.timepoint ? ` (${e.timepoint})` : ""}</td>
+                  <td>{OUTCOME_FAMILIES[e.outcome_family]}<br />{e.outcome_name || ""}{e.timepoint ? ` (${e.timepoint})` : ""}<div className="sub">{e.page ? `p. ${e.page} ` : ""}{e.source_label || ""}{(e.page || e.source_label) ? " - " : ""}entered by {nameOf(e.entered_by)}</div></td>
                   <td>{GROUP_DIMENSIONS[e.group_dimension]}{e.group_dimension === "other" ? `: ${e.marginalized_group} vs ${e.comparison_group}` : ""}</td>
                   <td className="nowrap">{e.delta === null ? <span className="pill abstract_conflict">incomplete</span> : `${fmt(e.delta)} (${fmt(e.var_delta !== null ? Math.sqrt(e.var_delta) : null)})`}</td>
-                  <td>{e.page ? `p. ${e.page} ` : ""}{e.source_label || ""}</td>
-                  <td>{nameOf(e.entered_by)}</td>
                   <td>{e.verified_by ? <span className="pill included">by {nameOf(e.verified_by)}</span> : <span className="pill abstract_conflict">Not checked</span>}</td>
-                  <td className="nowrap">
-                    {e.entered_by !== me.id && !e.verified_by && (
-                      <button className="small primary" onClick={() => { setChecking(true); setEditing(e); }} disabled={pending}>Check</button>
-                    )}{" "}
-                    {e.entered_by !== me.id && e.verified_by && (
-                      <button className="small" onClick={() => verify(e, false)} disabled={pending}>Uncheck</button>
-                    )}{" "}
-                    <button className="small" onClick={() => { setChecking(false); setEditing(e); }} disabled={pending}>Edit</button>{" "}
-                    <button className="small" onClick={() => remove(e)} disabled={pending}>Delete</button>
+                  <td>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {e.entered_by !== me.id && !e.verified_by && (
+                        <button className="small primary" onClick={() => { setChecking(true); setEditing(e); }} disabled={pending}>Check</button>
+                      )}
+                      {e.entered_by !== me.id && e.verified_by && (
+                        <button className="small" onClick={() => verify(e, false)} disabled={pending}>Uncheck</button>
+                      )}
+                      <button className="small" onClick={() => { setChecking(false); setEditing(e); }} disabled={pending}>Edit</button>
+                      <button className="small" onClick={() => remove(e)} disabled={pending}>Delete</button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -728,13 +758,14 @@ function EffectsTab({ paper, me, effects, codings, status, task, selection, clea
 
 // ---------------- Info ----------------
 
-function InfoTab({ paper }: { paper: Paper }) {
+function InfoTab({ paper, onAttached }: { paper: Paper; onAttached: () => void }) {
   const [v, setV] = useState({
     title: paper.title || "", authors: paper.authors || "", year: paper.year, journal: paper.journal || "",
     doi: paper.doi || "", abstract: paper.abstract || "", source: paper.source || "",
   });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
   const router = useRouter();
   const set = (k: string, val: any) => setV((x) => ({ ...x, [k]: val }));
 
@@ -743,17 +774,33 @@ function InfoTab({ paper }: { paper: Paper }) {
   }
   async function upload(file: File | undefined) {
     if (!file) return;
-    setMsg("Uploading the PDF...");
-    const { path, url } = await signedUpload(file.name);
-    const res = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
-    if (!res.ok) { setMsg("Upload failed (" + res.status + "). Try again or tell Fan."); return; }
-    setMsg("Reading the text...");
-    await finalizeUpload(path, file.name, paper.id);
-    setMsg("PDF attached. It now shows on the left.");
-    router.refresh();
+    setUploading(true);
+    try {
+      setMsg("Uploading the PDF...");
+      const link = await signedUpload(file.name);
+      if (!link.ok) { setMsg("Upload failed. " + link.error); return; }
+      const res = await fetch(link.url, { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
+      if (!res.ok) { setMsg("Upload failed: the file was not accepted by storage (" + res.status + "). Try again or tell Fan."); return; }
+      setMsg("Reading the text...");
+      const r = await finalizeUpload(link.path, file.name, paper.id);
+      if (!r.ok) { setMsg("Upload failed. " + r.error); return; }
+      setMsg(r.textRead
+        ? "PDF attached. It now shows on the left."
+        : "PDF attached and showing on the left, but no text could be read from it (it is probably a scanned image). Use the PDF view and type numbers in.");
+      onAttached();
+      router.refresh();
+    } catch (e: any) {
+      setMsg("Upload failed. Check your internet connection and try again; if it keeps failing, tell Fan. (" + (e?.message || "unknown error") + ")");
+    } finally {
+      setUploading(false);
+    }
   }
   function reextract() {
-    start(async () => { await reExtractText(paper.id); setMsg("Text read again."); router.refresh(); });
+    start(async () => {
+      const r = await reExtractText(paper.id);
+      setMsg(!r.ok ? "Could not read the text: " + r.error : r.textRead ? "Text read again." : "No text could be read from this PDF (probably a scanned image).");
+      router.refresh();
+    });
   }
   function remove() {
     if (!confirm("Delete this paper and everything recorded for it? This cannot be undone.")) return;
@@ -762,19 +809,26 @@ function InfoTab({ paper }: { paper: Paper }) {
 
   return (
     <div className="stack">
-      <fieldset>
-        <legend>PDF</legend>
-        {paper.pdf_path ? <p>A PDF is attached. To replace it, choose a new file.</p> : (
+      <div>
+        <h3 style={{ marginTop: 0 }}>PDF</h3>
+        {paper.pdf_path ? (
+          <p>A PDF is attached and shows on the left. To replace it, drop a new file below.</p>
+        ) : (
           <div className="note warn" style={{ marginTop: 0 }}>
-            No PDF yet. Find the paper on Google Scholar (click <b>All versions</b> for free copies), through the university library, or ask Fan. Save it to your computer, then choose it below.
+            No PDF yet. Find the paper on Google Scholar (click <b>All versions</b> for free copies), through the university library, or ask Fan. Save it to your computer, then drop it below.
           </div>
         )}
-        <div className="row">
-          <div><label>{paper.pdf_path ? "Replace PDF" : "Upload PDF"}</label><input type="file" accept="application/pdf" onChange={(e) => upload(e.target.files?.[0])} /></div>
-          {paper.pdf_path && <button onClick={reextract} disabled={pending}>Read the text again</button>}
-        </div>
+        <DropZone
+          size={paper.pdf_path ? "small" : "normal"}
+          accept="application/pdf"
+          disabled={uploading || pending}
+          title={uploading ? "Adding the PDF..." : paper.pdf_path ? "Drop a new PDF to replace it" : "Drop the PDF here"}
+          hint="or click to choose the file from your computer"
+          onFiles={(fs) => upload(fs[0])}
+        />
+        {paper.pdf_path && <div className="mt"><button onClick={reextract} disabled={pending || uploading}>Read the text again</button></div>}
         {msg && <p className="mt"><b>{msg}</b></p>}
-      </fieldset>
+      </div>
       <fieldset>
         <legend>Paper details</legend>
         <p className="where">Fix these if they were filled in wrong. They do not affect screening decisions.</p>

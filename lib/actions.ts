@@ -31,6 +31,14 @@ export async function logout() {
   redirect("/login");
 }
 
+// Remembers (per person, per browser) that the guide has been read, so Home stops pointing at it.
+export async function markGuideRead() {
+  const me = await requireMember();
+  const jar = await cookies();
+  jar.set("wb_guide_" + me.id, "1", { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 * 3 });
+  redirect("/");
+}
+
 export async function addMember(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   if (!name) return;
@@ -116,13 +124,22 @@ export async function deletePaper(id: string) {
 
 // ---------- PDF upload ----------
 
-export async function signedUpload(filename: string): Promise<{ path: string; url: string }> {
+export async function signedUpload(filename: string): Promise<{ ok: true; path: string; url: string } | { ok: false; error: string }> {
   await requireMember();
   const safe = filename.replace(/[^\w.\-]+/g, "_").slice(-80);
   const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safe}`;
   const { data, error } = await db().storage.from(PDF_BUCKET).createSignedUploadUrl(path);
-  if (error || !data) throw new Error(error?.message || "could not create upload url");
-  return { path, url: data.signedUrl };
+  if (error || !data) return { ok: false, error: "Storage is not ready: " + (error?.message || "no upload link") + ". Check that the pdfs bucket exists in Supabase." };
+  return { ok: true, path, url: data.signedUrl };
+}
+
+// Postgres cannot store the NUL character (\u0000) in text or jsonb, and PDF text extraction
+// sometimes produces it, along with other control characters and broken surrogate pairs.
+function cleanText(t: string): string {
+  return t
+    .replace(/\u0000/g, "")
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
 }
 
 async function extractPages(path: string): Promise<{ pages: string[]; text: string }> {
@@ -132,12 +149,17 @@ async function extractPages(path: string): Promise<{ pages: string[]; text: stri
   const { getDocumentProxy, extractText } = await import("unpdf");
   const pdf = await getDocumentProxy(buf);
   const { text } = await extractText(pdf, { mergePages: false });
-  const pages = (Array.isArray(text) ? text : [String(text)]).map((t) => t.replace(/[ \t]+\n/g, "\n").trim());
+  const pages = (Array.isArray(text) ? text : [String(text)]).map((t) => cleanText(t).replace(/[ \t]+\n/g, "\n").trim());
   return { pages, text: pages.join("\n\n") };
 }
 
+export type UploadResult =
+  | { ok: true; id: string; duplicate: boolean; textRead: boolean }
+  | { ok: false; error: string };
+
 // Attach an uploaded PDF to an existing paper, or create a new paper from it.
-export async function finalizeUpload(path: string, filename: string, paperId?: string): Promise<{ id: string; duplicate: boolean }> {
+// Errors are returned rather than thrown, because Next.js hides thrown messages in production.
+export async function finalizeUpload(path: string, filename: string, paperId?: string, source?: string): Promise<UploadResult> {
   const me = await requireMember();
   const d = db();
   let pages: string[] = [];
@@ -145,16 +167,30 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
   try {
     const r = await extractPages(path);
     pages = r.pages; text = r.text;
-  } catch {
-    pages = []; text = "";
+  } catch (e) {
+    console.error("pdf text extraction failed", path, e);
+  }
+  const textRead = pages.some((p) => p.length > 0);
+
+  // Save the file link first, then the text, so a text problem can never lose the PDF.
+  async function attach(id: string): Promise<string | null> {
+    const { error: e1 } = await d.from("papers").update({ pdf_path: path, updated_at: new Date().toISOString() }).eq("id", id);
+    if (e1) return e1.message;
+    const { error: e2 } = await d.from("papers").update({ pages: textRead ? pages : null }).eq("id", id);
+    if (e2) console.error("saving extracted text failed", id, e2.message);
+    return null;
   }
 
   if (paperId) {
     const { data: old } = await d.from("papers").select("pdf_path").eq("id", paperId).maybeSingle();
+    const err = await attach(paperId);
+    if (err) {
+      await d.storage.from(PDF_BUCKET).remove([path]);
+      return { ok: false, error: "The PDF could not be attached: " + err };
+    }
     if (old?.pdf_path && old.pdf_path !== path) await d.storage.from(PDF_BUCKET).remove([old.pdf_path]);
-    await d.from("papers").update({ pdf_path: path, pages, updated_at: new Date().toISOString() }).eq("id", paperId);
     revalidatePath(`/papers/${paperId}`);
-    return { id: paperId, duplicate: false };
+    return { ok: true, id: paperId, duplicate: false, textRead };
   }
 
   const doi = extractDOI(text.slice(0, 6000)) || extractDOI(text);
@@ -167,16 +203,23 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     const firstLine = (pages[0] || "").split("\n").map((s) => s.trim()).find((s) => s.length > 20 && s.length < 200);
     meta.title = firstLine || filename.replace(/\.pdf$/i, "");
   }
+  meta.title = cleanText(meta.title);
+  meta.abstract = cleanText(meta.abstract);
+
   const dup = await findDuplicate(meta.doi, meta.title);
   if (dup) {
     const { data: old } = await d.from("papers").select("pdf_path").eq("id", dup).maybeSingle();
     if (!old?.pdf_path) {
-      await d.from("papers").update({ pdf_path: path, pages, updated_at: new Date().toISOString() }).eq("id", dup);
+      const err = await attach(dup);
+      if (err) {
+        await d.storage.from(PDF_BUCKET).remove([path]);
+        return { ok: false, error: "The PDF could not be attached: " + err };
+      }
     } else {
       await d.storage.from(PDF_BUCKET).remove([path]);
     }
     revalidatePath(`/papers/${dup}`);
-    return { id: dup, duplicate: true };
+    return { ok: true, id: dup, duplicate: true, textRead };
   }
 
   const { data, error } = await d
@@ -189,27 +232,40 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
       journal: meta.journal || null,
       doi: meta.doi || null,
       abstract: meta.abstract || null,
-      source: "upload",
+      source: (source || "").trim() || "upload",
       pdf_path: path,
-      pages,
       added_by: me.id,
     })
     .select("id")
     .single();
-  if (error) throw new Error(error.message);
+  if (error || !data) {
+    await d.storage.from(PDF_BUCKET).remove([path]);
+    return { ok: false, error: "The paper could not be saved: " + (error?.message || "unknown error") };
+  }
+  if (textRead) {
+    const { error: e2 } = await d.from("papers").update({ pages }).eq("id", data.id);
+    if (e2) console.error("saving extracted text failed", data.id, e2.message);
+  }
   revalidatePath("/papers");
   revalidatePath("/");
-  return { id: data.id, duplicate: false };
+  return { ok: true, id: data.id, duplicate: false, textRead };
 }
 
-export async function reExtractText(paperId: string) {
+export async function reExtractText(paperId: string): Promise<{ ok: boolean; error?: string; textRead?: boolean }> {
   await requireMember();
   const d = db();
   const { data } = await d.from("papers").select("pdf_path").eq("id", paperId).maybeSingle();
-  if (!data?.pdf_path) return;
-  const { pages } = await extractPages(data.pdf_path);
-  await d.from("papers").update({ pages }).eq("id", paperId);
-  revalidatePath(`/papers/${paperId}`);
+  if (!data?.pdf_path) return { ok: false, error: "No PDF is attached." };
+  try {
+    const { pages } = await extractPages(data.pdf_path);
+    const textRead = pages.some((p) => p.length > 0);
+    const { error } = await d.from("papers").update({ pages: textRead ? pages : null }).eq("id", paperId);
+    if (error) return { ok: false, error: error.message };
+    revalidatePath(`/papers/${paperId}`);
+    return { ok: true, textRead };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "The text could not be read." };
+  }
 }
 
 // ---------- screening ----------

@@ -1,4 +1,4 @@
--- Synthesis Workbench schema
+-- CHHSR Meta Analysis Portal schema
 -- Run once in Supabase: SQL Editor -> New query -> paste -> Run
 
 create extension if not exists pgcrypto;

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import Nav from "@/components/Nav";
-import Help from "@/components/Help";
+import Back from "@/components/Back";
 import { db } from "@/lib/supabase";
 import { requireMember, allMembers } from "@/lib/session";
 import { paperStatus, currentStage } from "@/lib/status";
@@ -8,8 +7,10 @@ import type { Paper, Screening } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+const label = (d: string) => (d === "include" ? "Include" : d === "exclude" ? "Exclude" : "Unsure");
+
 export default async function ConflictsPage() {
-  const me = await requireMember();
+  await requireMember();
   const members = await allMembers();
   const d = db();
   const [{ data: papers }, { data: screenings }] = await Promise.all([
@@ -25,40 +26,37 @@ export default async function ConflictsPage() {
     .filter((r) => r.status.endsWith("_conflict"));
 
   return (
-    <>
-      <Nav me={me} active="conflicts" />
-      <main>
-        <h1>Step 4: Disagreements</h1>
-        <div className="guide-card">
-          <ol style={{ margin: 0 }}>
-            <li>These are papers where the two screeners did not agree, or one of them chose Unsure.</li>
-            <li>Meet with the other screener (in person or by message). Open the paper by clicking its title.</li>
-            <li>Read both decisions and notes, look at the paper together, and agree on include or exclude. Ask Fan if you cannot agree.</li>
-            <li>On the paper&apos;s Screen tab, write what you agreed and why, then click <b>Agreed: include</b> or <b>Agreed: exclude</b>. The paper leaves this list.</li>
-          </ol>
-        </div>
-        {rows.length === 0 ? <div className="note good">No disagreements right now.</div> : (
-          <table className="grid">
-            <thead><tr><th>Paper</th><th>Stage</th><th>Decisions</th></tr></thead>
-            <tbody>
-              {rows.map(({ p, scr, status }) => {
-                const stage = currentStage(status)!;
-                return (
-                  <tr key={p.id}>
-                    <td><Link href={`/papers/${p.id}`}>{p.title || "(untitled)"}</Link>{p.first_author ? ` - ${p.first_author} ${p.year ?? ""}` : ""}</td>
-                    <td><span className={"pill " + status}>{stage === "abstract" ? "Abstract" : "Full text"}</span></td>
-                    <td>
-                      {scr.filter((s) => s.stage === stage).map((s) => (
-                        <div key={s.id}><b>{nameOf(s.member_id)}: {s.decision}</b>{s.reason ? ` - ${s.reason}` : ""}{s.notes ? ` (${s.notes})` : ""}</div>
-                      ))}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </main>
-    </>
+    <main className="center">
+      <Back />
+      <div className="eyebrow">Step 4</div>
+      <h1>Disagreements</h1>
+      <p className="lead">
+        The two screeners did not agree on these papers. Meet, read both reasons, agree on include or exclude, and record it on the paper.
+      </p>
+      {rows.length === 0 ? (
+        <div className="allclear">No disagreements right now.</div>
+      ) : (
+        rows.map(({ p, scr, status }) => {
+          const stage = currentStage(status)!;
+          return (
+            <div className="item" key={p.id}>
+              <div className="eyebrow">{stage === "abstract" ? "Abstract step" : "Full-text step"}</div>
+              <div className="t">{p.title || "(untitled)"}</div>
+              <div className="sub">{p.first_author ? `${p.first_author} ${p.year ?? ""}` : ""}</div>
+              <div className="who">
+                {scr.filter((s) => s.stage === stage).map((s) => (
+                  <div key={s.id}>
+                    <b>{nameOf(s.member_id)}: {label(s.decision)}</b>
+                    {s.reason ? ` - ${s.reason}` : ""}
+                    {s.notes ? <span className="muted"> ({s.notes})</span> : null}
+                  </div>
+                ))}
+              </div>
+              <Link className="btn primary" href={`/papers/${p.id}`}>Open and decide &rarr;</Link>
+            </div>
+          );
+        })
+      )}
+    </main>
   );
 }

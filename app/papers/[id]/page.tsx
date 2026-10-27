@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation";
-import Nav from "@/components/Nav";
 import Workspace from "@/components/Workspace";
 import { db } from "@/lib/supabase";
 import { requireMember, allMembers } from "@/lib/session";
 import { isTask } from "@/lib/steps";
+import { loadQueues } from "@/lib/queue";
 import type { Coding, Effect, Paper, Screening } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -29,21 +29,20 @@ export default async function PaperPage({
     d.from("effects").select("*").eq("paper_id", id).order("created_at"),
   ]);
   if (!paper) notFound();
+  const left = t ? (await loadQueues(me.id)).mine[t].length : null;
   return (
-    <>
-      <Nav me={me} active={t ? undefined : "papers"} />
-      <main className="full">
-        <Workspace
-          key={`${id}-${t ?? "none"}`}
-          task={t}
-          paper={paper as Paper}
-          me={me}
-          members={members}
-          screenings={(screenings || []) as Screening[]}
-          codings={(codings || []) as Coding[]}
-          effects={(effects || []) as Effect[]}
-        />
-      </main>
-    </>
+    <main className="full">
+      <Workspace
+        key={`${id}-${t ?? "none"}`}
+        task={t}
+        left={left}
+        paper={paper as Paper}
+        me={me}
+        members={members}
+        screenings={(screenings || []) as Screening[]}
+        codings={(codings || []) as Coding[]}
+        effects={(effects || []) as Effect[]}
+      />
+    </main>
   );
 }

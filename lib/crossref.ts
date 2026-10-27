@@ -9,7 +9,7 @@ export type CrossrefHit = {
   abstract: string;
 };
 
-const UA = "SynthesisWorkbench/1.0 (mailto:research@example.org)";
+const UA = "CHHSRMetaAnalysisPortal/1.0 (mailto:research@example.org)";
 
 function mapItem(it: any): CrossrefHit {
   const authors = Array.isArray(it.author)
