@@ -119,7 +119,7 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
         used++;
       }
       setV(next); setEv(nextEv); setAiTouched(aiTouched || used > 0);
-      setAiMsg(`The AI filled ${used} ${used === 1 ? "field" : "fields"}${skipped ? `, left ${skipped} you had already filled` : ""}${empty ? `, and found nothing for ${empty}` : ""}. ${r.summary} Hover the quote mark next to a field to see the sentence it used. Check every field against the paper, then click Save.`);
+      setAiMsg(`The AI filled ${used} ${used === 1 ? "field" : "fields"}${skipped ? `, left ${skipped} you had already filled` : ""}${empty ? `, and found nothing for ${empty}` : ""}. ${r.pagesSkipped.length ? `It read ${r.pagesRead} of ${r.pagesTotal} pages; it skipped pages ${r.pagesSkipped.join(", ")} (mostly references), so check fields that may depend on them. ` : (r.pagesTotal === 1 ? "It read the one page of text. " : `It read all ${r.pagesTotal} pages. `)}${r.summary} Hover the quote mark next to a field to see the sentence it used. Check every field against the paper, then click Save.`);
     } catch (e: any) {
       setErr("Something went wrong: " + (e?.message || "unknown error"));
     } finally {

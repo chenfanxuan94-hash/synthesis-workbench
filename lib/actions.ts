@@ -410,7 +410,7 @@ export async function saveCoding(paperId: string, fields: Record<string, unknown
 export async function draftCoding(paperId: string): Promise<CodingDraftResult> {
   const me = await requireMember();
   const r = await draftCodingFromPaper(paperId);
-  if (r.ok) await log(paperId, me.id, "ai_draft", `study features from ${r.pagesRead} page${r.pagesRead === 1 ? "" : "s"} of text`);
+  if (r.ok) await log(paperId, me.id, "ai_draft", `study features from ${r.pagesRead === r.pagesTotal ? "all " : ""}${r.pagesRead}${r.pagesRead === r.pagesTotal ? "" : ` of ${r.pagesTotal}`} page${r.pagesTotal === 1 ? "" : "s"} of text`);
   return r;
 }
 

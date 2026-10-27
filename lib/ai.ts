@@ -201,7 +201,7 @@ export async function draftFromPaper(paperId: string, input: DraftInput): Promis
 // for each field of the coding form. The person checks each field before saving.
 
 export type CodingDraftField = { value: string | number | boolean | null; quote: string; page: number | null };
-export type CodingDraft = { fields: Record<string, CodingDraftField>; evidence: EvidenceMap; summary: string; model: string; pagesRead: number };
+export type CodingDraft = { fields: Record<string, CodingDraftField>; evidence: EvidenceMap; summary: string; model: string; pagesRead: number; pagesTotal: number; pagesSkipped: number[] };
 export type CodingDraftResult = { ok: true } & CodingDraft | { ok: false; error: string };
 
 const CODING_SYSTEM = `You help a research team record the design features of published studies for a meta-analysis of school-based mental health and behavior programs in the United States. You will read the extracted text of one paper, page by page, and fill in a fixed form.
@@ -330,6 +330,56 @@ export function readCodingAnswer(rawInput: unknown): { fields: Record<string, Co
   return { fields, summary: typeof sumRaw === "string" ? sumRaw : "", shape };
 }
 
+// The study-features fill reads the whole paper when it fits (about 45,000 words). For longer
+// documents it keeps the opening pages (abstract, design, sample), then the pages most likely to
+// hold method, sample, or group results, and drops reference lists and appendix-like pages first.
+const CODING_MAX_TEXT = 180_000;
+
+const SIGNALS: [RegExp, number][] = [
+  [/\b(method|methods|participants|procedure|design|sample)\b/gi, 2],
+  [/\b(results|findings)\b/gi, 2],
+  [/\btable\s*\d+/gi, 3],
+  [/\b(random(ly|ized|ised|ization|isation)|control group|comparison group|quasi[- ]experiment)/gi, 3],
+  [/\b(black|african american|hispanic|latin[aox]|white|race|racial|ethnic(ity)?|free or reduced|lunch|low[- ]income|socioeconomic)\b/gi, 3],
+  [/\b(sessions?|weeks?|curriculum|intervention|program(me)?|counsel(or|ing)|clinician|teacher)\b/gi, 1],
+  [/\b(attrition|missing|baseline equivalen|intent[- ]to[- ]treat)/gi, 2],
+  [/\b(interaction|moderat(ed|ion|or)|subgroup)\b/gi, 3],
+];
+
+function pageScore(t: string): number {
+  let score = 0;
+  for (const [re, w] of SIGNALS) score += Math.min(12, (t.match(re) || []).length) * w;
+  const citations = (t.match(/\(\d{4}[a-z]?\)|\b(19|20)\d{2}[a-z]?\.\s/g) || []).length;
+  if (/^\s*(references|bibliography|works cited)\b/im.test(t) || citations > 25) score -= 60;
+  return score;
+}
+
+export function choosePages(pages: string[], budget: number): { keep: number[]; skipped: number[] } {
+  const size = (i: number) => pages[i].length + 30;
+  const total = pages.reduce((n, _, i) => n + size(i), 0);
+  if (total <= budget) return { keep: pages.map((_, i) => i), skipped: [] };
+  const chosen = new Set<number>();
+  let used = 0;
+  for (let i = 0; i < Math.min(3, pages.length); i++) { if (used + size(i) <= budget) { chosen.add(i); used += size(i); } }
+  const rest = pages.map((t, i) => ({ i, score: pageScore(t) })).filter((x) => !chosen.has(x.i)).sort((a, b) => b.score - a.score || a.i - b.i);
+  for (const { i } of rest) if (used + size(i) <= budget) { chosen.add(i); used += size(i); }
+  const keep = Array.from(chosen).sort((a, b) => a - b);
+  const skipped = pages.map((_, i) => i).filter((i) => !chosen.has(i));
+  return { keep, skipped };
+}
+
+function rangeText(idx: number[]): string {
+  const n = idx.map((i) => i + 1);
+  const parts: string[] = [];
+  for (let a = 0; a < n.length; ) {
+    let b = a;
+    while (b + 1 < n.length && n[b + 1] === n[b] + 1) b++;
+    parts.push(a === b ? String(n[a]) : `${n[a]}-${n[b]}`);
+    a = b + 1;
+  }
+  return parts.join(", ");
+}
+
 export async function draftCodingFromPaper(paperId: string): Promise<CodingDraftResult> {
   if (!aiConfigured()) return { ok: false, error: "AI drafts are not set up yet. Add ANTHROPIC_API_KEY in the Vercel project settings." };
   const { data: paper } = await db().from("papers").select("title,first_author,year,abstract,pages").eq("id", paperId).maybeSingle();
@@ -337,17 +387,14 @@ export async function draftCodingFromPaper(paperId: string): Promise<CodingDraft
   const pages: string[] = Array.isArray(paper.pages) ? paper.pages : [];
   if (pages.length === 0) return { ok: false, error: "This paper has no readable text (no PDF, or a scanned one), so the AI cannot read it. Fill the form by hand." };
 
-  let text = "";
-  let pagesRead = 0;
-  for (let i = 0; i < pages.length; i++) {
-    const chunk = `\n--- Page ${i + 1} ---\n${pages[i]}\n`;
-    if (text.length + chunk.length > MAX_TEXT) break;
-    text += chunk;
-    pagesRead++;
-  }
+  const pick = choosePages(pages, CODING_MAX_TEXT);
+  const pagesRead = pick.keep.length;
+  const text = pick.keep.map((i) => `\n--- Page ${i + 1} ---\n${pages[i]}\n`).join("");
   const lines = [
     `Paper: ${paper.title || "(untitled)"}${paper.first_author ? ` (${paper.first_author}${paper.year ? ` ${paper.year}` : ""})` : ""}.`,
-    pagesRead < pages.length ? `Only the first ${pagesRead} of ${pages.length} pages fit; later pages were left out.` : `All ${pages.length} pages follow.`,
+    pick.skipped.length === 0
+      ? `All ${pages.length} pages follow.`
+      : `The paper has ${pages.length} pages; ${pick.skipped.length} were left out to fit (pages ${rangeText(pick.skipped)}), chosen as least likely to hold design, sample, or results information. If a field depends on a page you cannot see, leave it null and say so in summary.`,
     text,
   ];
   const r = await callClaudeTool<Record<string, any>>({ system: CODING_SYSTEM, blocks: [{ type: "text", text: lines.join("\n\n") }], tool: codingTool(), maxTokens: 8000 });
@@ -370,5 +417,5 @@ export async function draftCodingFromPaper(paperId: string): Promise<CodingDraft
     };
   }
   const note = r.truncated ? " The answer was cut off, so some fields may be missing; run it again to try for the rest." : "";
-  return { ok: true, fields: parsed.fields, evidence, summary: (parsed.summary + note).slice(0, 1200), model: r.model, pagesRead };
+  return { ok: true, fields: parsed.fields, evidence, summary: (parsed.summary + note).slice(0, 1200), model: r.model, pagesRead, pagesTotal: pages.length, pagesSkipped: pick.skipped.map((i) => i + 1) };
 }
