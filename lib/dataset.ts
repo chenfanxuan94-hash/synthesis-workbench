@@ -1,6 +1,10 @@
-// Builds the analysis-ready rows (one per extracted effect) with paper and final coding joined.
-import { db } from "./supabase";
-import type { Coding, Effect, Member, Paper } from "./types";
+// Builds the analysis-ready dataset: one row per extracted effect from the APPROVED papers
+// (approved by votes, or by the PI's decision), with the paper's shared coding attached.
+import ExcelJS from "exceljs";
+import { selectAll } from "./db";
+import { standing } from "./status";
+import { allMembers } from "./session";
+import type { Coding, Effect, Member, Paper, Vote } from "./types";
 
 export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "effect_id", label: "effect_id", def: "Unique id of the effect row." },
@@ -10,7 +14,9 @@ export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "year", label: "year", def: "Publication year." },
   { key: "doi", label: "doi", def: "DOI when known." },
   { key: "source", label: "source", def: "How the record entered the library (seed list, database search, upload, manual)." },
-  { key: "study_design", label: "study_design", def: "RCT, cluster RCT, quasi-experiment, other (final coding)." },
+  { key: "approved_by", label: "approved_by", def: "votes (two Include votes, no Exclude) or PI (the PI's decision)." },
+  { key: "coding_done", label: "coding_done", def: "TRUE when the team marked the paper done. Rows from unfinished papers are included but may still change." },
+  { key: "study_design", label: "study_design", def: "RCT, cluster RCT, quasi-experiment, other." },
   { key: "targeting_level", label: "targeting_level", def: "Universal, selective, indicated, or mixed/unclear. Moderator for Hypothesis 1." },
   { key: "cultural_adaptation", label: "cultural_adaptation", def: "Whether the program was described as culturally adapted. Moderator for Hypothesis 2." },
   { key: "adaptation_depth", label: "adaptation_depth", def: "Surface, deep, both, or not reported (Bernal dimensions)." },
@@ -74,52 +80,105 @@ export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "page", label: "page", def: "Page of the PDF the numbers came from." },
   { key: "source_label", label: "source_label", def: "Table or figure label in the paper." },
   { key: "quote", label: "quote", def: "Verbatim text the numbers were taken from." },
-  { key: "entered_by", label: "entered_by", def: "Who extracted the row." },
-  { key: "verified_by", label: "verified_by", def: "Who checked it against the paper. Blank means unverified." },
+  { key: "entered_by", label: "entered_by", def: "Who entered the row." },
+  { key: "last_edited_by", label: "last_edited_by", def: "Who last saved the row." },
+  { key: "ai_assisted", label: "ai_assisted", def: "TRUE when Claude drafted the row from a screenshot or the text and a person checked it before saving." },
   { key: "notes", label: "notes", def: "Extractor notes." },
 ];
 
 export type DatasetRow = Record<string, string | number | boolean | null>;
 
-export async function buildDataset(opts: { verifiedOnly?: boolean } = {}): Promise<DatasetRow[]> {
-  const d = db();
-  const [{ data: effects }, { data: papers }, { data: codings }, { data: members }] = await Promise.all([
-    d.from("effects").select("*").order("created_at"),
-    d.from("papers").select("id,title,first_author,year,doi,source"),
-    d.from("codings").select("*"),
-    d.from("members").select("id,name,initials"),
+export type PaperRow = Record<string, string | number | boolean | null>;
+
+export type Dataset = {
+  rows: DatasetRow[];
+  papers: PaperRow[];           // one row per paper in the library, for the Papers sheet
+  approvedPapers: number;
+  approvedDone: number;
+  papersWithRows: number;
+  memberNames: string[];
+  codingsOfApproved: Coding[];
+};
+
+export async function buildDataset(): Promise<Dataset> {
+  const [P, V, C, E, members] = await Promise.all([
+    selectAll<Paper>("papers", "id,title,authors,first_author,year,journal,doi,source,pdf_path,pi_decision,pi_note,pi_by,created_at", { order: "created_at" }),
+    selectAll<Vote>("votes", "id,paper_id,member_id,decision,reason,notes,updated_at", { order: "updated_at" }),
+    selectAll<Coding>("codings", "*", { order: "updated_at" }),
+    selectAll<Effect>("effects", "*", { order: "created_at" }),
+    allMembers(),
   ]);
-  const P = new Map(((papers || []) as Paper[]).map((p) => [p.id, p]));
-  const M = new Map(((members || []) as Member[]).map((m) => [m.id, m.name]));
-  const finalCoding = new Map<string, Coding>();
-  for (const c of (codings || []) as Coding[]) {
-    const cur = finalCoding.get(c.paper_id);
-    if (!cur || (c.is_final && !cur.is_final)) finalCoding.set(c.paper_id, c);
+  const M = new Map(members.map((m) => [m.id, m.name]));
+  const name = (id: string | null | undefined) => (id ? M.get(id) ?? null : null);
+  const votesBy = new Map<string, Vote[]>();
+  for (const v of V.data) (votesBy.get(v.paper_id) || votesBy.set(v.paper_id, []).get(v.paper_id)!).push(v);
+  const codingBy = new Map<string, Coding>();
+  for (const c of C.data) {
+    const cur = codingBy.get(c.paper_id);
+    if (!cur || c.updated_at > cur.updated_at || (c.done && !cur.done)) codingBy.set(c.paper_id, c);
   }
+  const effectsBy = new Map<string, Effect[]>();
+  for (const e of E.data) (effectsBy.get(e.paper_id) || effectsBy.set(e.paper_id, []).get(e.paper_id)!).push(e);
+
   const rows: DatasetRow[] = [];
-  for (const e of (effects || []) as Effect[]) {
-    if (opts.verifiedOnly && !e.verified_by) continue;
-    const p = P.get(e.paper_id);
-    const c = finalCoding.get(e.paper_id);
-    const row: DatasetRow = {};
-    for (const col of COLUMNS) {
-      const k = col.key;
-      if (k === "effect_id") row[k] = e.id;
-      else if (k === "paper_id") row[k] = e.paper_id;
-      else if (k === "study") row[k] = p ? `${p.first_author || "?"} ${p.year || ""}`.trim() : "";
-      else if (k === "title") row[k] = p?.title ?? null;
-      else if (k === "year") row[k] = p?.year ?? null;
-      else if (k === "doi") row[k] = p?.doi ?? null;
-      else if (k === "source") row[k] = p?.source ?? null;
-      else if (k === "entered_by") row[k] = M.get(e.entered_by) ?? null;
-      else if (k === "verified_by") row[k] = e.verified_by ? M.get(e.verified_by) ?? null : null;
-      else if (k in e) row[k] = (e as any)[k] ?? null;
-      else if (c && k in c) row[k] = (c as any)[k] ?? null;
-      else row[k] = null;
+  const papers: PaperRow[] = [];
+  let approvedPapers = 0, approvedDone = 0;
+  const withRows = new Set<string>();
+  const codingsOfApproved: Coding[] = [];
+
+  for (const p of P.data) {
+    const votes = votesBy.get(p.id) || [];
+    const s = standing(p, votes);
+    const c = codingBy.get(p.id);
+    const effs = effectsBy.get(p.id) || [];
+    const study = `${p.first_author || "?"} ${p.year || ""}`.trim();
+    const pr: PaperRow = {
+      paper_id: p.id, study, title: p.title, authors: p.authors, year: p.year, journal: p.journal, doi: p.doi, source: p.source,
+      status: s.byPI ? (s.status === "approved" ? "approved by PI" : "rejected by PI") : s.status.replace("_", " "),
+      include_votes: s.include, exclude_votes: s.exclude, unsure_votes: s.unsure,
+    };
+    for (const m of members) {
+      const v = votes.find((x) => x.member_id === m.id);
+      pr["vote_" + m.name] = v ? (v.decision === "unsure" ? "not sure" : v.decision) + (v.reason ? ` (${v.reason})` : "") : null;
     }
-    rows.push(row);
+    pr.pi_decision = p.pi_decision;
+    pr.pi_note = p.pi_note;
+    pr.pi_by = name(p.pi_by);
+    pr.coding_done = c ? c.done : false;
+    pr.coding_last_saved_by = c ? name(c.updated_by || c.coder_id) : null;
+    pr.effect_rows = effs.length;
+    pr.pdf = Boolean(p.pdf_path);
+    papers.push(pr);
+
+    if (s.status !== "approved") continue;
+    approvedPapers++;
+    if (c?.done) approvedDone++;
+    if (c) codingsOfApproved.push(c);
+    for (const e of effs) {
+      withRows.add(p.id);
+      const row: DatasetRow = {};
+      for (const col of COLUMNS) {
+        const k = col.key;
+        if (k === "effect_id") row[k] = e.id;
+        else if (k === "paper_id") row[k] = e.paper_id;
+        else if (k === "study") row[k] = study;
+        else if (k === "title") row[k] = p.title ?? null;
+        else if (k === "year") row[k] = p.year ?? null;
+        else if (k === "doi") row[k] = p.doi ?? null;
+        else if (k === "source") row[k] = p.source ?? null;
+        else if (k === "approved_by") row[k] = s.byPI ? "PI" : "votes";
+        else if (k === "coding_done") row[k] = c ? c.done : false;
+        else if (k === "entered_by") row[k] = name(e.entered_by);
+        else if (k === "last_edited_by") row[k] = name(e.updated_by || e.entered_by);
+        else if (k === "ai_assisted") row[k] = Boolean(e.ai_assisted);
+        else if (k in e) row[k] = (e as any)[k] ?? null;
+        else if (c && k in c) row[k] = (c as any)[k] ?? null;
+        else row[k] = null;
+      }
+      rows.push(row);
+    }
   }
-  return rows;
+  return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved };
 }
 
 export function toCSV(rows: DatasetRow[]): string {
@@ -131,4 +190,48 @@ export function toCSV(rows: DatasetRow[]): string {
   const head = COLUMNS.map((c) => c.label).join(",");
   const body = rows.map((r) => COLUMNS.map((c) => esc(r[c.key])).join(",")).join("\n");
   return head + "\n" + body + "\n";
+}
+
+const PAPER_DEFS: Record<string, string> = {
+  paper_id: "Unique id of the paper.", study: "First author and year.", title: "Paper title.", authors: "Authors as recorded.", year: "Publication year.",
+  journal: "Journal.", doi: "DOI when known.", source: "How the record entered the library.",
+  status: "needs votes, approved, rejected, PI decides, approved by PI, or rejected by PI.",
+  include_votes: "Number of Include votes.", exclude_votes: "Number of Exclude votes.", unsure_votes: "Number of Not sure votes.",
+  pi_decision: "include or exclude when the PI decided over the votes.", pi_note: "The PI's note.", pi_by: "Who made the PI decision.",
+  coding_done: "TRUE when the paper was marked done.", coding_last_saved_by: "Who last saved the study features.",
+  effect_rows: "Number of effect rows entered.", pdf: "TRUE when a PDF is attached.",
+};
+
+// Excel workbook: Effects (the analysis file), Papers (the whole library with votes), Codebook.
+export async function toXLSX(ds: Dataset): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "CHHSR Meta Analysis Portal";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Effects");
+  ws.columns = COLUMNS.map((c) => ({ header: c.label, key: c.key, width: Math.min(40, Math.max(10, c.label.length + 2)) }));
+  for (const r of ds.rows) ws.addRow(COLUMNS.map((c) => (r[c.key] === undefined ? null : r[c.key])));
+  styleHeader(ws);
+
+  const wp = wb.addWorksheet("Papers");
+  const paperKeys = ds.papers.length ? Object.keys(ds.papers[0]) : Object.keys(PAPER_DEFS);
+  wp.columns = paperKeys.map((k) => ({ header: k, key: k, width: k === "title" ? 60 : k === "authors" ? 40 : Math.min(30, Math.max(10, k.length + 2)) }));
+  for (const r of ds.papers) wp.addRow(paperKeys.map((k) => (r[k] === undefined ? null : r[k])));
+  styleHeader(wp);
+
+  const wc = wb.addWorksheet("Codebook");
+  wc.columns = [{ header: "sheet", key: "sheet", width: 10 }, { header: "column", key: "column", width: 30 }, { header: "definition", key: "definition", width: 110 }];
+  for (const c of COLUMNS) wc.addRow(["Effects", c.label, c.def]);
+  for (const k of paperKeys) wc.addRow(["Papers", k, PAPER_DEFS[k] || (k.startsWith("vote_") ? `${k.slice(5)}'s vote, with the exclusion reason in brackets.` : "")]);
+  styleHeader(wc);
+
+  const out = await wb.xlsx.writeBuffer();
+  return Buffer.from(out as ArrayBuffer);
+}
+
+function styleHeader(ws: ExcelJS.Worksheet) {
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF9EFF1" } };
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+  if (ws.columnCount > 0) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columnCount } };
 }

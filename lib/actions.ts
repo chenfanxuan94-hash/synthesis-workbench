@@ -8,7 +8,26 @@ import { COOKIE, requireMember } from "./session";
 import { computeEffect } from "./effects";
 import { lookupDOI } from "./crossref";
 import { cleanDOI, extractDOI, firstAuthor, initialsFor, type ParsedPaper } from "./parsers";
-import type { Decision, Stage } from "./types";
+import { draftFromPaper, type DraftInput, type DraftResult } from "./ai";
+import type { Decision } from "./types";
+
+// Every action that changes data returns one of these instead of throwing, because
+// Next.js replaces thrown error messages with a generic one in production.
+export type Result = { ok: true } | { ok: false; error: string };
+
+// ---------- change log ----------
+
+async function log(paperId: string | null, memberId: string, action: string, detail?: string | null) {
+  const { error } = await db().from("activity").insert({ paper_id: paperId, member_id: memberId, action, detail: detail || null });
+  if (error) console.error("activity log failed", action, error.message);
+}
+
+function refreshPaper(paperId: string) {
+  revalidatePath(`/papers/${paperId}`);
+  revalidatePath("/papers");
+  revalidatePath("/dataset");
+  revalidatePath("/");
+}
 
 // ---------- login ----------
 
@@ -66,6 +85,7 @@ export async function createPaper(p: ParsedPaper & { source?: string }): Promise
   const doi = cleanDOI(p.doi);
   const dup = await findDuplicate(doi, p.title);
   if (dup) return { id: dup, duplicate: true };
+  const source = (p.source || "").trim() || "manual";
   const { data, error } = await db()
     .from("papers")
     .insert({
@@ -76,12 +96,13 @@ export async function createPaper(p: ParsedPaper & { source?: string }): Promise
       journal: p.journal || null,
       doi: doi || null,
       abstract: p.abstract || null,
-      source: p.source || "manual",
+      source,
       added_by: me.id,
     })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
+  await log(data.id, me.id, "added", source);
   revalidatePath("/papers");
   revalidatePath("/");
   return { id: data.id, duplicate: false };
@@ -96,8 +117,8 @@ export async function importPapers(list: ParsedPaper[], source: string): Promise
   return { added, skipped };
 }
 
-export async function updatePaper(id: string, fields: Partial<ParsedPaper> & { source?: string }) {
-  await requireMember();
+export async function updatePaper(id: string, fields: Partial<ParsedPaper> & { source?: string }): Promise<Result> {
+  const me = await requireMember();
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (fields.title !== undefined) patch.title = fields.title || null;
   if (fields.authors !== undefined) { patch.authors = fields.authors || null; patch.first_author = firstAuthor(fields.authors) || null; }
@@ -107,9 +128,10 @@ export async function updatePaper(id: string, fields: Partial<ParsedPaper> & { s
   if (fields.abstract !== undefined) patch.abstract = fields.abstract || null;
   if (fields.source !== undefined) patch.source = fields.source || null;
   const { error } = await db().from("papers").update(patch).eq("id", id);
-  if (error) throw new Error(error.message);
-  revalidatePath(`/papers/${id}`);
-  revalidatePath("/papers");
+  if (error) return { ok: false, error: error.message };
+  await log(id, me.id, "details");
+  refreshPaper(id);
+  return { ok: true };
 }
 
 export async function deletePaper(id: string) {
@@ -119,7 +141,22 @@ export async function deletePaper(id: string) {
   if (data?.pdf_path) await d.storage.from(PDF_BUCKET).remove([data.pdf_path]);
   await d.from("papers").delete().eq("id", id);
   revalidatePath("/papers");
+  revalidatePath("/");
   redirect("/papers");
+}
+
+// The PI's decision on a paper. It overrides the votes either way; null clears it.
+export async function setPiDecision(paperId: string, decision: "include" | "exclude" | null, note: string): Promise<Result> {
+  const me = await requireMember();
+  if (!me.is_pi) return { ok: false, error: "Only the PI can approve or reject a paper over the votes." };
+  const patch = decision
+    ? { pi_decision: decision, pi_note: note || null, pi_by: me.id, pi_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    : { pi_decision: null, pi_note: null, pi_by: null, pi_at: null, updated_at: new Date().toISOString() };
+  const { error } = await db().from("papers").update(patch).eq("id", paperId);
+  if (error) return { ok: false, error: error.message };
+  await log(paperId, me.id, "pi_decision", decision ? (decision === "include" ? "approved" : "rejected") + (note ? ` (${note})` : "") : null);
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
 // ---------- PDF upload ----------
@@ -158,7 +195,6 @@ export type UploadResult =
   | { ok: false; error: string };
 
 // Attach an uploaded PDF to an existing paper, or create a new paper from it.
-// Errors are returned rather than thrown, because Next.js hides thrown messages in production.
 export async function finalizeUpload(path: string, filename: string, paperId?: string, source?: string): Promise<UploadResult> {
   const me = await requireMember();
   const d = db();
@@ -178,6 +214,7 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     if (e1) return e1.message;
     const { error: e2 } = await d.from("papers").update({ pages: textRead ? pages : null }).eq("id", id);
     if (e2) console.error("saving extracted text failed", id, e2.message);
+    await log(id, me.id, "pdf");
     return null;
   }
 
@@ -189,7 +226,7 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
       return { ok: false, error: "The PDF could not be attached: " + err };
     }
     if (old?.pdf_path && old.pdf_path !== path) await d.storage.from(PDF_BUCKET).remove([old.pdf_path]);
-    revalidatePath(`/papers/${paperId}`);
+    refreshPaper(paperId);
     return { ok: true, id: paperId, duplicate: false, textRead };
   }
 
@@ -218,10 +255,11 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     } else {
       await d.storage.from(PDF_BUCKET).remove([path]);
     }
-    revalidatePath(`/papers/${dup}`);
+    refreshPaper(dup);
     return { ok: true, id: dup, duplicate: true, textRead };
   }
 
+  const src = (source || "").trim() || "upload";
   const { data, error } = await d
     .from("papers")
     .insert({
@@ -232,7 +270,7 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
       journal: meta.journal || null,
       doi: meta.doi || null,
       abstract: meta.abstract || null,
-      source: (source || "").trim() || "upload",
+      source: src,
       pdf_path: path,
       added_by: me.id,
     })
@@ -246,6 +284,7 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     const { error: e2 } = await d.from("papers").update({ pages }).eq("id", data.id);
     if (e2) console.error("saving extracted text failed", data.id, e2.message);
   }
+  await log(data.id, me.id, "added", src + ", with PDF");
   revalidatePath("/papers");
   revalidatePath("/");
   return { ok: true, id: data.id, duplicate: false, textRead };
@@ -268,57 +307,76 @@ export async function reExtractText(paperId: string): Promise<{ ok: boolean; err
   }
 }
 
-// ---------- screening ----------
+// ---------- votes ----------
 
-export async function saveScreening(paperId: string, stage: Stage, decision: Decision, reason: string, notes: string) {
+export async function saveVote(paperId: string, decision: Decision, reason: string, notes: string): Promise<Result> {
   const me = await requireMember();
-  const { error } = await db().from("screenings").upsert(
-    { paper_id: paperId, member_id: me.id, stage, decision, reason: reason || null, notes: notes || null, updated_at: new Date().toISOString() },
-    { onConflict: "paper_id,member_id,stage" }
+  const { error } = await db().from("votes").upsert(
+    { paper_id: paperId, member_id: me.id, decision, reason: decision === "exclude" ? reason || null : null, notes: notes || null, updated_at: new Date().toISOString() },
+    { onConflict: "paper_id,member_id" }
   );
-  if (error) throw new Error(error.message);
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/papers");
-  revalidatePath("/conflicts");
-  revalidatePath("/");
+  if (error) return { ok: false, error: error.message };
+  const word = decision === "include" ? "Include" : decision === "exclude" ? "Exclude" : "Not sure";
+  await log(paperId, me.id, "vote", word + (decision === "exclude" && reason ? ` (${reason})` : ""));
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
-export async function resolveConflict(paperId: string, stage: Stage, decision: "include" | "exclude", reason: string) {
-  const me = await requireMember();
-  const patch: Record<string, unknown> = { override_reason: reason || null, override_by: me.id, updated_at: new Date().toISOString() };
-  if (stage === "abstract") patch.abstract_override = decision; else patch.fulltext_override = decision;
-  const { error } = await db().from("papers").update(patch).eq("id", paperId);
-  if (error) throw new Error(error.message);
-  revalidatePath("/conflicts");
-  revalidatePath("/papers");
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/");
+// ---------- coding (one shared form per paper) ----------
+
+const CODING_NUMERIC = ["dosage_sessions", "dosage_weeks", "age_min", "age_max", "n_total", "pct_black", "pct_latinx", "pct_low_income"];
+const CODING_KEYS = [
+  "study_design", "targeting_level", "cultural_adaptation", "adaptation_depth", "delivery_agent", "dosage_sessions", "dosage_weeks",
+  "risk_of_bias", "setting", "age_min", "age_max", "n_total", "pct_black", "pct_latinx", "pct_low_income", "single_group_sample",
+  "reporting_level", "measures_validated_by_group", "notes",
+];
+
+async function currentCoding(paperId: string): Promise<{ id: string; done: boolean } | null> {
+  const { data } = await db().from("codings").select("id,done,updated_at").eq("paper_id", paperId).order("updated_at", { ascending: false }).limit(1);
+  const row = (data || [])[0];
+  return row ? { id: row.id, done: Boolean(row.done) } : null;
 }
 
-// ---------- coding ----------
-
-export async function saveCoding(paperId: string, fields: Record<string, unknown>) {
+export async function saveCoding(paperId: string, fields: Record<string, unknown>): Promise<Result> {
   const me = await requireMember();
-  const numeric = ["dosage_sessions", "dosage_weeks", "age_min", "age_max", "n_total", "pct_black", "pct_latinx", "pct_low_income"];
-  const row: Record<string, unknown> = { paper_id: paperId, coder_id: me.id, updated_at: new Date().toISOString() };
-  for (const [k, v] of Object.entries(fields)) {
-    if (numeric.includes(k)) row[k] = v === "" || v === null || v === undefined ? null : Number(v);
+  const row: Record<string, unknown> = { updated_by: me.id, updated_at: new Date().toISOString() };
+  for (const k of CODING_KEYS) {
+    const v = fields[k];
+    if (v === undefined) continue;
+    if (CODING_NUMERIC.includes(k)) row[k] = v === "" || v === null ? null : Number(v);
     else if (k === "single_group_sample") row[k] = v === "" || v === null ? null : v === true || v === "true";
     else row[k] = v === "" ? null : v;
   }
-  const { error } = await db().from("codings").upsert(row, { onConflict: "paper_id,coder_id" });
-  if (error) throw new Error(error.message);
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/dataset");
+  const d = db();
+  const cur = await currentCoding(paperId);
+  if (cur) {
+    const { error } = await d.from("codings").update(row).eq("id", cur.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await d.from("codings").insert({ ...row, paper_id: paperId, coder_id: me.id });
+    if (error) return { ok: false, error: error.message };
+  }
+  await log(paperId, me.id, "coding");
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
-export async function markCodingFinal(paperId: string, codingId: string) {
-  await requireMember();
+// Marks the paper finished (features and numbers both entered) or reopens it.
+export async function setDone(paperId: string, done: boolean): Promise<Result> {
+  const me = await requireMember();
   const d = db();
-  await d.from("codings").update({ is_final: false }).eq("paper_id", paperId);
-  await d.from("codings").update({ is_final: true }).eq("id", codingId);
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/dataset");
+  const cur = await currentCoding(paperId);
+  const stamp = { done, updated_by: me.id, updated_at: new Date().toISOString() };
+  if (cur) {
+    const { error } = await d.from("codings").update(stamp).eq("id", cur.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await d.from("codings").insert({ ...stamp, paper_id: paperId, coder_id: me.id });
+    if (error) return { ok: false, error: error.message };
+  }
+  await log(paperId, me.id, done ? "done" : "reopened");
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
 // ---------- effects ----------
@@ -333,9 +391,9 @@ const EFFECT_TEXT = [
   "comparison_group", "tier", "int_scale", "source_label", "quote", "notes",
 ];
 
-export async function saveEffect(paperId: string, effectId: string | null, fields: Record<string, unknown>) {
+export async function saveEffect(paperId: string, effectId: string | null, fields: Record<string, unknown>, aiAssisted = false): Promise<Result> {
   const me = await requireMember();
-  const row: Record<string, unknown> = { paper_id: paperId, updated_at: new Date().toISOString() };
+  const row: Record<string, unknown> = { paper_id: paperId, updated_by: me.id, updated_at: new Date().toISOString() };
   for (const k of EFFECT_NUMERIC) {
     const v = fields[k];
     row[k] = v === "" || v === null || v === undefined ? null : Number(v);
@@ -347,32 +405,42 @@ export async function saveEffect(paperId: string, effectId: string | null, field
   row.higher_is_worse = fields.higher_is_worse === true || fields.higher_is_worse === "true";
   const computed = computeEffect(row as any);
   Object.assign(row, computed);
+  const label = [fields.outcome_name, fields.timepoint].filter(Boolean).join(", ") || String(fields.outcome_family || "");
 
   const d = db();
   if (effectId) {
-    row.verified_by = null; // any edit clears verification
     const { error } = await d.from("effects").update(row).eq("id", effectId);
-    if (error) throw new Error(error.message);
+    if (error) return { ok: false, error: error.message };
+    await log(paperId, me.id, "effect_edit", label);
   } else {
     row.entered_by = me.id;
+    row.ai_assisted = aiAssisted;
     const { error } = await d.from("effects").insert(row);
-    if (error) throw new Error(error.message);
+    if (error) return { ok: false, error: error.message };
+    await log(paperId, me.id, "effect_add", label + (aiAssisted ? ", from a Claude draft" : ""));
   }
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/dataset");
-  revalidatePath("/");
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
-export async function verifyEffect(paperId: string, effectId: string, verified: boolean) {
+export async function deleteEffect(paperId: string, effectId: string): Promise<Result> {
   const me = await requireMember();
-  await db().from("effects").update({ verified_by: verified ? me.id : null }).eq("id", effectId);
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/dataset");
+  const d = db();
+  const { data } = await d.from("effects").select("outcome_name,timepoint").eq("id", effectId).maybeSingle();
+  const { error } = await d.from("effects").delete().eq("id", effectId);
+  if (error) return { ok: false, error: error.message };
+  await log(paperId, me.id, "effect_delete", [data?.outcome_name, data?.timepoint].filter(Boolean).join(", "));
+  refreshPaper(paperId);
+  return { ok: true };
 }
 
-export async function deleteEffect(paperId: string, effectId: string) {
-  await requireMember();
-  await db().from("effects").delete().eq("id", effectId);
-  revalidatePath(`/papers/${paperId}`);
-  revalidatePath("/dataset");
+// ---------- Claude draft ----------
+
+// Asks Claude to read a screenshot of a results table (or pages of the paper's text) and
+// propose effect rows. Nothing is saved: the person checks each row and saves it themselves.
+export async function draftEffects(paperId: string, input: DraftInput): Promise<DraftResult> {
+  const me = await requireMember();
+  const r = await draftFromPaper(paperId, input);
+  if (r.ok) await log(paperId, me.id, "ai_draft", `${r.candidates.length} row${r.candidates.length === 1 ? "" : "s"} from ${input.image ? "a screenshot" : "the paper's text"}`);
+  return r;
 }

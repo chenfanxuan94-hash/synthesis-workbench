@@ -1,4 +1,5 @@
 import Back from "@/components/Back";
+import PageTabs from "@/components/PageTabs";
 import AddPapers from "@/components/AddPapers";
 import { requireMember } from "@/lib/session";
 
@@ -10,8 +11,7 @@ export default async function NewPaperPage() {
   return (
     <main className="center wide">
       <Back />
-      <div className="eyebrow">Step 1</div>
-      <h1>Add papers</h1>
+      <PageTabs current="add" />
       <AddPapers />
     </main>
   );

@@ -12,12 +12,13 @@ export type Selection = { text: string; page: number | null };
 
 type Props = {
   paperId: string;
-  effect: Effect | null;
+  effect: Effect | null;                 // editing an existing row
+  initial?: Record<string, any> | null;  // a prefilled new row (from a Claude draft)
+  aiDraft?: boolean;
   selection: Selection | null;
   clearSelection: () => void;
   onDone: () => void;
   onCancel: () => void;
-  onVerify?: () => void;
 };
 
 const NUM_KEYS = [
@@ -45,14 +46,19 @@ function blank(): Record<string, any> {
   return v;
 }
 
-export default function EffectForm({ paperId, effect, selection, clearSelection, onDone, onCancel, onVerify }: Props) {
-  const [v, setV] = useState<Record<string, any>>(() => {
-    if (!effect) return blank();
-    const b = blank();
-    for (const k of Object.keys(b)) b[k] = (effect as any)[k] ?? (typeof b[k] === "boolean" ? false : "");
-    b.higher_is_worse = Boolean(effect.higher_is_worse);
-    return b;
-  });
+function fromRecord(src: Record<string, any>): Record<string, any> {
+  const b = blank();
+  for (const k of Object.keys(b)) {
+    const val = src[k];
+    if (val === undefined || val === null) continue;
+    b[k] = typeof b[k] === "boolean" ? Boolean(val) : String(val);
+  }
+  b.higher_is_worse = Boolean(src.higher_is_worse);
+  return b;
+}
+
+export default function EffectForm({ paperId, effect, initial, aiDraft, selection, clearSelection, onDone, onCancel }: Props) {
+  const [v, setV] = useState<Record<string, any>>(() => (effect ? fromRecord(effect) : initial ? fromRecord(initial) : blank()));
   const [active, setActive] = useState<string>("m_t_n");
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
@@ -89,12 +95,9 @@ export default function EffectForm({ paperId, effect, selection, clearSelection,
   function save() {
     setErr("");
     start(async () => {
-      try {
-        await saveEffect(paperId, effect ? effect.id : null, v);
-        onDone();
-      } catch (e: any) {
-        setErr(e?.message || "Save failed");
-      }
+      const r = await saveEffect(paperId, effect ? effect.id : null, v, Boolean(aiDraft));
+      if (!r.ok) { setErr("Could not save: " + r.error); return; }
+      onDone();
     });
   }
 
@@ -113,8 +116,14 @@ export default function EffectForm({ paperId, effect, selection, clearSelection,
   const cName = v.comparison_group || "comparison group";
 
   return (
-    <fieldset>
-      <legend>{onVerify ? "Check this row against the paper" : effect ? "Edit this row" : "New row"}</legend>
+    <fieldset className={aiDraft ? "aiform" : undefined}>
+      <legend>{effect ? "Edit this row" : aiDraft ? "Check this draft, then save it" : "New row"}</legend>
+
+      {aiDraft && (
+        <div className="note warn" style={{ marginTop: 0 }}>
+          <b>Drafted by Claude.</b> Compare every number below with the paper on the left before you save. Fix anything that is wrong; nothing is saved until you click <b>Save effect</b>.
+        </div>
+      )}
 
       {selection && (
         <div className="selbar">
@@ -273,27 +282,17 @@ export default function EffectForm({ paperId, effect, selection, clearSelection,
         <div><label>Table or figure<Help text="For example Table 3. Leave blank if the numbers were in a sentence." /></label><input value={v.source_label} onChange={(e) => set("source_label", e.target.value)} placeholder="for example: Table 3" style={{ width: 170 }} /></div>
       </div>
       <div className="mt">
-        <label className="block">Copied text<Help text="Paste the exact sentence or table row the numbers came from. The person checking your work uses it to find the numbers quickly." /></label>
+        <label className="block">Copied text<Help text="Paste the exact sentence or table row the numbers came from, so anyone can find them again quickly." /></label>
         <textarea value={v.quote} onChange={(e) => set("quote", e.target.value)} />
       </div>
       <div className="mt">
         <label className="block">Notes (optional)</label>
-        <textarea value={v.notes} onChange={(e) => set("notes", e.target.value)} style={{ minHeight: 50 }} placeholder="Anything the checker should know, for example: the paper also gives adjusted means in Table 4" />
+        <textarea value={v.notes} onChange={(e) => set("notes", e.target.value)} style={{ minHeight: 50 }} placeholder="Anything others should know, for example: the paper also gives adjusted means in Table 4" />
       </div>
       {err && <div className="err">{err}</div>}
       <div className="row mt" style={{ alignItems: "center" }}>
-        {onVerify ? (
-          <>
-            <button className="primary big" onClick={onVerify} disabled={pending}>Everything matches - mark as checked</button>
-            <button onClick={save} disabled={pending}>Save my corrections</button>
-            <button onClick={onCancel} disabled={pending}>Cancel</button>
-          </>
-        ) : (
-          <>
-            <button className="primary big" onClick={save} disabled={pending}>{pending ? "Saving..." : effect ? "Save changes" : "Save effect"}</button>
-            <button onClick={onCancel} disabled={pending}>Cancel</button>
-          </>
-        )}
+        <button className="primary big" onClick={save} disabled={pending}>{pending ? "Saving..." : effect ? "Save changes" : "Save effect"}</button>
+        <button onClick={onCancel} disabled={pending}>Cancel</button>
       </div>
     </fieldset>
   );

@@ -2,13 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import Back from "@/components/Back";
 import { requireMember } from "@/lib/session";
-import { loadQueues, pickNext } from "@/lib/queue";
+import { loadLibrary, pickNext } from "@/lib/library";
 import { TASK_ORDER, TASK_STEP, isTask, type Task } from "@/lib/steps";
+import { plural } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-// /work/abstract, /work/fulltext, /work/code, /work/extract, /work/verify open the next paper
-// waiting on you at that step. /work/next opens the first step that has anything waiting.
+// /work/vote opens the next paper that needs your vote; /work/code the next approved paper
+// that is not done. /work/next opens whichever of those has something waiting.
 export default async function WorkPage({
   params,
   searchParams,
@@ -19,36 +20,39 @@ export default async function WorkPage({
   const { task } = await params;
   const { after } = await searchParams;
   const me = await requireMember();
-  const q = await loadQueues(me.id);
+  const lib = await loadLibrary(me.id);
 
   let t: Task | null = null;
-  if (task === "next") t = TASK_ORDER.find((k) => q.mine[k].length > 0) ?? null;
+  if (task === "next") t = TASK_ORDER.find((k) => lib.mine[k].length > 0) ?? null;
   else if (isTask(task)) t = task;
 
   if (t) {
-    const id = pickNext(q.mine[t], after);
+    const id = pickNext(lib.mine[t], after);
     if (id) redirect(`/papers/${id}?task=${t}`);
   }
 
   const step = isTask(task) ? TASK_STEP[task] : null;
-  const other = TASK_ORDER.filter((k) => q.mine[k].length > 0);
+  const other = TASK_ORDER.filter((k) => k !== t && lib.mine[k].length > 0);
 
   return (
     <main className="center">
       <Back />
       <div className="allclear">
-        <b>{step ? `Nothing is left for you in step ${step.n}.` : "You are all caught up."}</b>{" "}
-        {step ? `There are no papers waiting for you in "${step.title}".` : "Nothing is waiting for you at any step."}{" "}
-        {task === "fulltext" || task === "abstract" ? "Papers you have screened move on once the second person has also decided." : ""}
+        <b>{step ? `Nothing is left for you in step ${step.n}.` : "Nothing needs you right now."}</b>{" "}
+        {task === "vote" && lib.waitingOthers > 0 && `${plural(lib.waitingOthers, "paper")} you voted on ${lib.waitingOthers === 1 ? "is" : "are"} waiting for a second vote from someone else. `}
+        {task === "vote" && lib.split > 0 && `${plural(lib.split, "paper")} ${lib.split === 1 ? "is" : "are"} waiting for the PI's decision. `}
+        {task === "code" && lib.counts.approved === 0 && "No paper has been approved yet; coding starts once a paper has two Include votes. "}
+        {task === "code" && lib.counts.approved > 0 && "Every approved paper is marked done. "}
+        Every paper is always open from <Link href="/papers">All papers</Link>.
       </div>
       {other.length > 0 && (
         <>
-          <h2>Waiting for you at other steps</h2>
+          <h2>Waiting for you at another step</h2>
           {other.map((k) => (
             <div className="item" key={k}>
               <div className="eyebrow">Step {TASK_STEP[k].n}</div>
               <div className="t">{TASK_STEP[k].title}</div>
-              <div className="sub" style={{ marginBottom: 12 }}>{q.mine[k].length} waiting for you</div>
+              <div className="sub" style={{ marginBottom: 12 }}>{plural(lib.mine[k].length, "paper")} waiting for you</div>
               <Link className="btn primary" href={TASK_STEP[k].href}>{TASK_STEP[k].go} &rarr;</Link>
             </div>
           ))}

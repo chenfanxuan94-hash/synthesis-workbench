@@ -1,6 +1,8 @@
 // Project-wide vocabularies. Edit here; the forms and the codebook read from this file.
 
-export const SCREENERS_REQUIRED = 2;
+// A paper is approved once this many people voted Include (and nobody voted Exclude),
+// and rejected once this many voted Exclude (and nobody voted Include).
+export const VOTES_REQUIRED = 2;
 
 export const EXCLUSION_REASONS = [
   "Not a United States study",

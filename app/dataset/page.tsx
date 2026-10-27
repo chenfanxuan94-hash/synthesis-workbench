@@ -1,15 +1,14 @@
 import Back from "@/components/Back";
 import Help from "@/components/Help";
-import { db } from "@/lib/supabase";
 import { requireMember } from "@/lib/session";
 import { buildDataset, COLUMNS } from "@/lib/dataset";
-import { paperStatus } from "@/lib/status";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS } from "@/lib/config";
-import type { Coding, Paper, Screening } from "@/lib/types";
+import { plural } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const SHOW = ["study", "outcome_family", "outcome_name", "timepoint", "group_dimension", "tier", "g_m", "g_c", "delta", "var_delta", "rd_delta", "lnrr_delta", "targeting_level", "cultural_adaptation", "delivery_agent", "verified_by"];
+const SHOW = ["study", "outcome_family", "outcome_name", "timepoint", "group_dimension", "tier", "g_m", "g_c", "delta", "var_delta", "rd_delta", "lnrr_delta", "targeting_level", "cultural_adaptation", "delivery_agent", "coding_done", "last_edited_by"];
 
 function count<T>(items: T[], key: (t: T) => string): [string, number][] {
   const m = new Map<string, number>();
@@ -17,71 +16,47 @@ function count<T>(items: T[], key: (t: T) => string): [string, number][] {
   return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
 }
 
-export default async function DatasetPage({ searchParams }: { searchParams: Promise<{ v?: string }> }) {
+export default async function DatasetPage() {
   await requireMember();
-  const { v } = await searchParams;
-  const verifiedOnly = v === "1";
-  const all = await buildDataset({ verifiedOnly: false });
-  const verifiedCount = all.filter((r) => r.verified_by).length;
-  const rows = verifiedOnly ? all.filter((r) => r.verified_by) : all;
-
-  const d = db();
-  const [{ data: papers }, { data: screenings }, { data: codings }] = await Promise.all([
-    d.from("papers").select("id,abstract_override,fulltext_override"),
-    d.from("screenings").select("paper_id,member_id,stage,decision"),
-    d.from("codings").select("*"),
-  ]);
-  const byPaper = new Map<string, Screening[]>();
-  for (const s of (screenings || []) as Screening[]) (byPaper.get(s.paper_id) || byPaper.set(s.paper_id, []).get(s.paper_id)!).push(s);
-  const included = ((papers || []) as Paper[]).filter((p) => paperStatus(p, byPaper.get(p.id) || []) === "included");
-  const finalCoding = new Map<string, Coding>();
-  for (const c of (codings || []) as Coding[]) {
-    const cur = finalCoding.get(c.paper_id);
-    if (!cur || (c.is_final && !cur.is_final)) finalCoding.set(c.paper_id, c);
-  }
-  const includedCodings = included.map((p) => finalCoding.get(p.id)).filter(Boolean) as Coding[];
-  const papersWithEffects = new Set(rows.map((r) => r.paper_id)).size;
-
-  const fmt = (x: unknown) => (typeof x === "number" ? x.toFixed(3) : x === null || x === undefined ? "" : String(x));
+  const ds = await buildDataset();
+  const rows = ds.rows;
+  const fmt = (x: unknown) => (typeof x === "number" ? x.toFixed(3) : x === null || x === undefined ? "" : typeof x === "boolean" ? (x ? "yes" : "no") : String(x));
+  const unfinished = ds.approvedPapers - ds.approvedDone;
 
   return (
     <main className="center wide">
       <Back />
-      <div className="eyebrow">Step 8</div>
+      <div className="eyebrow">Step 4</div>
       <h1>Download the dataset</h1>
       <p className="lead">
-        {rows.length} {rows.length === 1 ? "row" : "rows"} from {papersWithEffects} {papersWithEffects === 1 ? "paper" : "papers"}.
-        {" "}{verifiedCount} {verifiedCount === 1 ? "row has" : "rows have"} been checked by a second person.
+        {plural(rows.length, "row")} from {plural(ds.papersWithRows, "approved paper")}.
+        {" "}{ds.approvedDone} of {plural(ds.approvedPapers, "approved paper")} {ds.approvedDone === 1 ? "is" : "are"} marked done.
       </p>
 
-      <div className="mb">
-        <div className="seg2">
-          <a className={!verifiedOnly ? "on" : ""} href="/dataset">All rows ({all.length})</a>
-          <a className={verifiedOnly ? "on" : ""} href="/dataset?v=1">Verified only ({verifiedCount})</a>
-        </div>
+      <div className="row" style={{ alignItems: "center" }}>
+        <a className="btn primary big" href="/api/dataset">Download Excel</a>
+        <a className="btn" href="/api/dataset?format=csv">CSV instead</a>
       </div>
-      <a className="btn primary big" href={`/api/dataset${verifiedOnly ? "?verified=1" : ""}`}>
-        Download CSV{verifiedOnly ? " (verified rows only)" : ""}
-      </a>
       <p className="muted mt">
-        Use <b>Verified only</b> for the analysis file. One row per extracted effect, with the paper&apos;s final coding attached.
+        Only <b>approved</b> papers are included: approved by the votes, or by the PI&apos;s decision. The Excel file has three sheets: <b>Effects</b> (one row per extracted effect, with the paper&apos;s coding attached), <b>Papers</b> (the whole library with everyone&apos;s votes), and the <b>Codebook</b>.
+        {unfinished > 0 && <> {plural(unfinished, "approved paper")} {unfinished === 1 ? "is" : "are"} not marked done yet; {unfinished === 1 ? "its" : "their"} rows are included and flagged in the coding_done column.</>}
         <Help text="Pool delta with var_delta in a three-level model clustered on paper_id (metafor rma.mv with random = ~ 1 | paper_id / effect_id, plus cluster-robust SEs). Moderators are the coding columns. Binary rows also carry rd_delta and lnrr_delta for the absolute and relative scales." />
       </p>
 
       <details className="fold">
         <summary>Reporting audit</summary>
         <p className="muted">
-          {included.length} included papers, {includedCodings.length} with a coding, {papersWithEffects} with at least one extracted effect.
-          <Help text="Among papers that passed full-text screening, how many report results by group, and at what level of detail. Computed from the Reporting level field in each paper's final coding." />
+          {ds.approvedPapers} approved papers, {ds.codingsOfApproved.length} with saved study features, {ds.papersWithRows} with at least one effect row.
+          <Help text="Among approved papers, how many report results by group, and at what level of detail. Computed from the Reporting level field of each paper's coding." />
         </p>
         <div className="row" style={{ alignItems: "flex-start" }}>
           <table className="grid" style={{ width: "auto", minWidth: 420 }}>
-            <thead><tr><th>Reporting level (final coding)</th><th>Papers</th></tr></thead>
-            <tbody>{count(includedCodings, (c) => c.reporting_level || "").map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody>
+            <thead><tr><th>Reporting level</th><th>Papers</th></tr></thead>
+            <tbody>{count(ds.codingsOfApproved, (c) => c.reporting_level || "").map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody>
           </table>
           <table className="grid" style={{ width: "auto", minWidth: 300 }}>
             <thead><tr><th>Single-group samples</th><th>Papers</th></tr></thead>
-            <tbody>{count(includedCodings, (c) => c.single_group_sample === true ? "Yes" : c.single_group_sample === false ? "No" : "").map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody>
+            <tbody>{count(ds.codingsOfApproved, (c) => c.single_group_sample === true ? "Yes" : c.single_group_sample === false ? "No" : "").map(([k, n]) => <tr key={k}><td>{k}</td><td>{n}</td></tr>)}</tbody>
           </table>
           <table className="grid" style={{ width: "auto", minWidth: 300 }}>
             <thead><tr><th>Effects by outcome family</th><th>Rows</th></tr></thead>
@@ -100,7 +75,7 @@ export default async function DatasetPage({ searchParams }: { searchParams: Prom
 
       <details className="fold">
         <summary>Preview the rows</summary>
-        {rows.length === 0 ? <p className="muted">No effects extracted yet.</p> : (
+        {rows.length === 0 ? <p className="muted">No effect rows from approved papers yet.</p> : (
           <div className="dataset-wrap">
             <table className="grid">
               <thead><tr>{SHOW.map((k) => <th key={k}>{k}</th>)}</tr></thead>

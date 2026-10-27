@@ -6,15 +6,14 @@ The code folder and the GitHub repository are still called `synthesis-workbench`
 
 Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private storage), Vercel. No client-side database access; the service role key stays on the server.
 
-## Workflow the app enforces
+## How the team works in it (version 3: one master list)
 
 1. Papers enter the library by PDF upload (text extracted, DOI detected, metadata from Crossref), by DOI, by RIS or CSV import from a database export, or by hand. Duplicates are skipped by DOI then exact title. Every paper keeps its source.
-2. Title and abstract screening. Two independent decisions per paper. Each reviewer's decision is hidden until they have saved their own. All include advances the paper; all exclude excludes it; anything else is a conflict.
-3. Full-text screening, same rule. Lack of results by race or income is not an exclusion reason; those papers stay in and are counted in the reporting audit.
-4. Conflicts page lists disagreements; the agreed decision is recorded with the resolver's name and a note.
-5. Code tab: design features (targeting level, cultural adaptation, delivery agent, dosage, design, risk of bias, composition, reporting level). One coding per coder; disagreements are marked side by side; one coding is marked final.
-6. Effects tab: one row per outcome, group contrast and timepoint. Enter the group-by-arm cells, or the reported per-group effects, or the reported interaction term. The gap change delta and its variance are computed live, oriented so positive means the gap narrowed. Select text in the Text pane to capture the verbatim source and drop its numbers into fields. A second person verifies each row.
-7. Dataset page: all rows joined with the final coding, the reporting audit tables, a codebook, and CSV download.
+2. Everyone votes on each paper (Include, Exclude with a reason, or Not sure), with a seven-question checklist that suggests the vote. A paper is approved when two people vote Include and nobody votes Exclude, rejected when two vote Exclude and nobody votes Include; any other mix shows "PI decides" and the PI records a decision that overrides the votes. Votes are visible to everyone (set BLIND_VOTES=1 to hide others' votes until you have voted).
+3. All papers is the master list: votes by person, status, coding progress, who last worked on each paper, and View / Edit / Code / Vote buttons. Filters by status, source, and free-text search.
+4. Coding is one shared form per paper (study features) plus effect rows, editable by anyone; the app records who last saved, and every paper has a History. The team marks a paper done when the features and the numbers are in.
+5. Effect rows can be drafted by Claude from a screenshot of the results table (or from pages of the extracted text). Claude only transcribes; the person checks every number and saves. Saved rows are flagged ai_assisted with the checker's name.
+6. The dataset page downloads an Excel workbook (Effects, Papers, Codebook) with every effect row from the approved papers and the paper's coding attached; CSV is also available.
 
 ## Setup (once)
 
@@ -22,7 +21,8 @@ Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private sto
 
 1. Open your Supabase project.
 2. SQL Editor -> New query.
-3. Paste the whole of `supabase/schema.sql` and Run. This creates the tables, enables row-level security with no policies (so the anon key can read nothing), creates the private `pdfs` bucket, and seeds three names (Fan, Kim, Aaron). Edit the seed names first if needed; names can also be added from the login page.
+3. Fresh install: paste the whole of `supabase/schema.sql` and Run. This creates the tables, enables row-level security with no policies (so the anon key can read nothing), creates the private `pdfs` bucket, and seeds three names (Fan as PI, Kim, Aaron). Edit the seed names first if needed; names can also be added from the login page.
+   Upgrading from an earlier version: paste `supabase/migrate_v3.sql` instead and Run. It adds the votes and activity tables and the new columns, and carries earlier screening decisions over as votes. Safe to run more than once.
 4. Project Settings -> API: copy the Project URL and the `service_role` key.
 
 ### 2. GitHub
@@ -59,7 +59,10 @@ git push -u origin main
 2. Environment Variables (Production):
    - `SUPABASE_URL` = the Project URL
    - `SUPABASE_SERVICE_ROLE_KEY` = the service_role key
+   - `ANTHROPIC_API_KEY` = an API key from console.anthropic.com, for Claude drafts of effect rows. Optional; without it the draft button says it is not set up.
+   - `ANTHROPIC_MODEL` = optional, defaults to `claude-sonnet-5-5`.
    - `TEAM_CODE` = optional. Leave unset for name-only login. If set, the login page asks for it once per browser.
+   - `BLIND_VOTES` = optional. Set to `1` to hide other people's votes on a paper until you have voted.
 3. Deploy. Open the URL, pick your name.
 
 ### 4. Vercel function timeout
@@ -87,6 +90,7 @@ npm run dev
 - Login is name-only by design. Anyone who has the URL can pick a name. Set `TEAM_CODE` if the URL may leak, or protect the deployment with Vercel's password protection.
 - The Supabase anon key is never shipped to the browser, and RLS is enabled with no policies, so the tables cannot be read through Supabase's public API.
 - PDFs are in a private bucket and served through one-hour signed URLs.
+- Claude receives only what the person sends: the screenshot or the selected pages of text, plus the paper's title. Nothing is stored on Anthropic's side by the app; the drafted rows live only in the browser until a person saves them.
 
 ## Effect size computation
 
@@ -103,7 +107,7 @@ Implemented in `lib/effects.ts` and documented in the codebook on the Dataset pa
 
 ```
 library(metafor)
-d <- read.csv("gap_effects_verified_YYYY-MM-DD.csv")
+d <- readxl::read_excel("chhsr_meta_dataset_YYYY-MM-DD.xlsx", sheet = "Effects")
 m0 <- rma.mv(delta, var_delta, random = ~ 1 | paper_id / effect_id, data = d)
 m1 <- rma.mv(delta, var_delta, mods = ~ targeting_level, random = ~ 1 | paper_id / effect_id, data = d)
 ```

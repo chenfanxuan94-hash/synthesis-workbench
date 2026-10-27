@@ -1,4 +1,4 @@
-export type Member = { id: string; name: string; initials: string };
+export type Member = { id: string; name: string; initials: string; is_pi?: boolean };
 
 export type Paper = {
   id: string;
@@ -12,23 +12,21 @@ export type Paper = {
   source: string | null;
   pdf_path: string | null;
   pages: string[] | null;
-  abstract_override: "include" | "exclude" | null;
-  fulltext_override: "include" | "exclude" | null;
-  override_reason: string | null;
-  override_by: string | null;
+  pi_decision: "include" | "exclude" | null;
+  pi_note: string | null;
+  pi_by: string | null;
+  pi_at: string | null;
   added_by: string | null;
   created_at: string;
   updated_at: string;
 };
 
-export type Stage = "abstract" | "fulltext";
 export type Decision = "include" | "exclude" | "unsure";
 
-export type Screening = {
+export type Vote = {
   id: string;
   paper_id: string;
   member_id: string;
-  stage: Stage;
   decision: Decision;
   reason: string | null;
   notes: string | null;
@@ -39,7 +37,8 @@ export type Coding = {
   id: string;
   paper_id: string;
   coder_id: string;
-  is_final: boolean;
+  updated_by: string | null;
+  done: boolean;
   study_design: string | null;
   targeting_level: string | null;
   cultural_adaptation: string | null;
@@ -59,6 +58,7 @@ export type Coding = {
   reporting_level: string | null;
   measures_validated_by_group: string | null;
   notes: string | null;
+  created_at: string;
   updated_at: string;
 };
 
@@ -66,7 +66,8 @@ export type Effect = {
   id: string;
   paper_id: string;
   entered_by: string;
-  verified_by: string | null;
+  updated_by: string | null;
+  ai_assisted: boolean;
   outcome_family: "engagement" | "mental_health" | "discipline";
   outcome_name: string | null;
   outcome_type: "continuous" | "binary";
@@ -95,10 +96,22 @@ export type Effect = {
   updated_at: string;
 };
 
-export type PaperStatus =
-  | "abstract_pending"
-  | "abstract_conflict"
-  | "fulltext_pending"
-  | "fulltext_conflict"
-  | "included"
-  | "excluded";
+export type Activity = {
+  id: string;
+  paper_id: string | null;
+  member_id: string | null;
+  action: string;
+  detail: string | null;
+  created_at: string;
+};
+
+// Where a paper stands, worked out from the votes and the PI's decision.
+export type PaperStatus = "needs_votes" | "approved" | "rejected" | "split";
+
+export type Standing = {
+  status: PaperStatus;
+  byPI: boolean;          // the status comes from the PI's decision, not the votes
+  include: number;        // votes cast each way
+  exclude: number;
+  unsure: number;
+};
