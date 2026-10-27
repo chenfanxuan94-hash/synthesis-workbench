@@ -10,10 +10,10 @@ export const dynamic = "force-dynamic";
 
 const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "mine", label: "Needs me" },
+  { key: "mine", label: "Waiting for me" },
   { key: "abstract_pending", label: "Abstract stage" },
   { key: "fulltext_pending", label: "Full-text stage" },
-  { key: "conflict", label: "Conflicts" },
+  { key: "conflict", label: "Disagreements" },
   { key: "included", label: "Included" },
   { key: "excluded", label: "Excluded" },
 ];
@@ -64,11 +64,12 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
     <>
       <Nav me={me} active="papers" />
       <main>
-        <h1>Papers</h1>
+        <h1>All papers</h1>
+        <p className="lead">Every paper in the library and where it is in the steps. Click a title to open it. To work through papers one after another, use <Link href="/work/next">My next task</Link> instead.</p>
         <div className="row mb">
-          <div className="tabs" style={{ borderBottom: "none" }}>
+          <div className="tabs">
             {FILTERS.map((x) => (
-              <Link key={x.key} href={`/papers?f=${x.key}${q ? `&q=${encodeURIComponent(q)}` : ""}`} className={"btn" + (f === x.key ? " primary" : "")} style={{ marginRight: -1 }}>
+              <Link key={x.key} href={`/papers?f=${x.key}${q ? `&q=${encodeURIComponent(q)}` : ""}`} className={"btn" + (f === x.key ? " on" : "")}>
                 {x.label}
               </Link>
             ))}
@@ -79,7 +80,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
             <button type="submit">Search</button>
           </form>
         </div>
-        <p>{rows.length} papers</p>
+        <p><b>{rows.length}</b> papers shown</p>
         <table className="grid">
           <thead>
             <tr>
@@ -89,7 +90,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
               <th>Status</th>
               <th>
                 Abstract
-                <Help text="Each reviewer's abstract-stage decision, shown by initials. + include, x exclude, ? unsure. Blank means not yet screened." />
+                <Help text="Each reviewer's abstract-stage decision, shown by initials. + include, x exclude, ? unsure. Until you have saved your own decision, other people's decisions show only as done, so screening stays independent." />
               </th>
               <th>Full text</th>
               <th>Coded<Help text="Number of design-feature codings entered for the paper (one per coder). F marks that a final consensus coding exists." /></th>
@@ -101,8 +102,14 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
               const cc = codingCount.get(p.id) || 0;
               const hasFinal = ((codings || []) as any[]).some((c) => c.paper_id === p.id && c.is_final);
               const ec = effCount.get(p.id);
-              const deco = (stage: string) =>
-                scr.filter((s) => s.stage === stage).map((s) => `${initials.get(s.member_id) || "??"} ${sym(s.decision)}`).join("   ");
+              // Others' decisions stay hidden until you have saved your own at that stage.
+              const deco = (stage: string) => {
+                const rows = scr.filter((s) => s.stage === stage);
+                const iDecided = rows.some((s) => s.member_id === me.id);
+                return rows
+                  .map((s) => `${initials.get(s.member_id) || "??"} ${iDecided || s.member_id === me.id ? sym(s.decision) : "done"}`)
+                  .join("   ");
+              };
               return (
                 <tr key={p.id}>
                   <td>
@@ -111,7 +118,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
                   </td>
                   <td>{p.year ?? ""}</td>
                   <td>{p.pdf_path ? "yes" : ""}</td>
-                  <td className="nowrap">{STATUS_LABEL[status as PaperStatus]}{mine ? <b> - needs you</b> : ""}</td>
+                  <td className="nowrap"><span className={"pill " + status}>{STATUS_LABEL[status as PaperStatus]}</span>{mine ? <> <span className="pill you">needs you</span></> : ""}</td>
                   <td className="nowrap">{deco("abstract")}</td>
                   <td className="nowrap">{deco("fulltext")}</td>
                   <td>{cc ? cc + (hasFinal ? " F" : "") : ""}</td>

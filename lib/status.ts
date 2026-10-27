@@ -2,10 +2,10 @@ import { SCREENERS_REQUIRED } from "./config";
 import type { Paper, PaperStatus, Screening, Stage } from "./types";
 
 export const STATUS_LABEL: Record<PaperStatus, string> = {
-  abstract_pending: "Title and abstract screening",
-  abstract_conflict: "Conflict (abstract stage)",
-  fulltext_pending: "Full-text screening",
-  fulltext_conflict: "Conflict (full-text stage)",
+  abstract_pending: "Step 2: abstract screening",
+  abstract_conflict: "Step 4: disagreement (abstract)",
+  fulltext_pending: "Step 3: full-text screening",
+  fulltext_conflict: "Step 4: disagreement (full text)",
   included: "Included",
   excluded: "Excluded",
 };

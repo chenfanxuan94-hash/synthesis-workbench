@@ -28,11 +28,16 @@ export default async function ConflictsPage() {
     <>
       <Nav me={me} active="conflicts" />
       <main>
-        <h1>
-          Conflicts
-          <Help text="Papers where the reviewers disagreed, or someone marked unsure, at the current stage. Open the paper to see both views side by side and record the agreed decision. Resolved conflicts leave this list." />
-        </h1>
-        {rows.length === 0 ? <p>No open conflicts.</p> : (
+        <h1>Step 4: Disagreements</h1>
+        <div className="guide-card">
+          <ol style={{ margin: 0 }}>
+            <li>These are papers where the two screeners did not agree, or one of them chose Unsure.</li>
+            <li>Meet with the other screener (in person or by message). Open the paper by clicking its title.</li>
+            <li>Read both decisions and notes, look at the paper together, and agree on include or exclude. Ask Fan if you cannot agree.</li>
+            <li>On the paper&apos;s Screen tab, write what you agreed and why, then click <b>Agreed: include</b> or <b>Agreed: exclude</b>. The paper leaves this list.</li>
+          </ol>
+        </div>
+        {rows.length === 0 ? <div className="note good">No disagreements right now.</div> : (
           <table className="grid">
             <thead><tr><th>Paper</th><th>Stage</th><th>Decisions</th></tr></thead>
             <tbody>
@@ -41,7 +46,7 @@ export default async function ConflictsPage() {
                 return (
                   <tr key={p.id}>
                     <td><Link href={`/papers/${p.id}`}>{p.title || "(untitled)"}</Link>{p.first_author ? ` - ${p.first_author} ${p.year ?? ""}` : ""}</td>
-                    <td>{stage === "abstract" ? "Abstract" : "Full text"}</td>
+                    <td><span className={"pill " + status}>{stage === "abstract" ? "Abstract" : "Full text"}</span></td>
                     <td>
                       {scr.filter((s) => s.stage === stage).map((s) => (
                         <div key={s.id}><b>{nameOf(s.member_id)}: {s.decision}</b>{s.reason ? ` - ${s.reason}` : ""}{s.notes ? ` (${s.notes})` : ""}</div>

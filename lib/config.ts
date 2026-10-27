@@ -44,7 +44,7 @@ export const GROUP_DIMENSIONS: Record<string, string> = {
 };
 
 export const TIERS: Record<string, string> = {
-  cells: "Group-by-arm cells (means, SDs, Ns or events)",
-  subgroup: "Reported effect size per group",
-  interaction: "Reported treatment-by-group interaction",
+  cells: "Numbers for each group in each condition (most common)",
+  subgroup: "A ready-made effect size for each group",
+  interaction: "Only a treatment-by-group interaction",
 };

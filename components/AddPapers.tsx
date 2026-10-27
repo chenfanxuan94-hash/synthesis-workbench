@@ -150,7 +150,7 @@ function ByDOI() {
         <button onClick={lookup} disabled={busy || !doi.trim()}>Look up</button>
       </div>
       {hit && (
-        <div className="box">
+        <div className="card">
           <p><b>{hit.title}</b></p>
           <p>{hit.authors}</p>
           <p>{hit.journal} {hit.year ?? ""}</p>

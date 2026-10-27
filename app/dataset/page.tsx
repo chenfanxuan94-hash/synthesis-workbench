@@ -46,7 +46,13 @@ export default async function DatasetPage({ searchParams }: { searchParams: Prom
     <>
       <Nav me={me} active="dataset" />
       <main>
-        <h1>Dataset</h1>
+        <h1>Step 8: Dataset</h1>
+        <div className="guide-card">
+          <p style={{ margin: 0 }}>
+            <b>Usually Fan.</b> This page collects every row from step 6 with the paper&apos;s coding from step 5 attached. Use <b>Verified only</b> for the analysis file:
+            those rows have been checked by a second person in step 7. The tables below count how papers report results by group, and the codebook at the bottom explains every column in the download.
+          </p>
+        </div>
         <p>
           One row per extracted effect, with the paper's final coding joined. Download the CSV for analysis in R; the codebook below defines every column.
           <Help text="Pool delta with var_delta in a three-level model clustered on paper_id (metafor rma.mv with random = ~ 1 | paper_id / effect_id, plus cluster-robust SEs). Moderators are the coding columns. Binary rows also carry rd_delta and lnrr_delta for the absolute and relative scales." />

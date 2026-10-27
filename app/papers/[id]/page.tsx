@@ -3,13 +3,22 @@ import Nav from "@/components/Nav";
 import Workspace from "@/components/Workspace";
 import { db } from "@/lib/supabase";
 import { requireMember, allMembers } from "@/lib/session";
+import { isTask } from "@/lib/steps";
 import type { Coding, Effect, Paper, Screening } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-export default async function PaperPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PaperPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ task?: string }>;
+}) {
   const { id } = await params;
+  const { task } = await searchParams;
+  const t = isTask(task) ? task : null;
   const me = await requireMember();
   const members = await allMembers();
   const d = db();
@@ -22,9 +31,11 @@ export default async function PaperPage({ params }: { params: Promise<{ id: stri
   if (!paper) notFound();
   return (
     <>
-      <Nav me={me} active="papers" />
+      <Nav me={me} active={t ? undefined : "papers"} />
       <main className="full">
         <Workspace
+          key={`${id}-${t ?? "none"}`}
+          task={t}
           paper={paper as Paper}
           me={me}
           members={members}
