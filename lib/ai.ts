@@ -60,7 +60,8 @@ Rules:
 9. group_dimension: "black_white", "latinx_white", "income", or "other". Hispanic counts as Latinx; African American counts as Black; free or reduced-price lunch counts as lower-income.
 10. For the quote, copy the exact table row, cell labels, or sentence the numbers came from. Give the page number when it is known (page text is labeled with its page number; for a screenshot, use the page number only if it is visible in the image, otherwise null). source_label is the table or figure name, for example "Table 3".
 11. If nothing is broken down by group and condition, return an empty candidates list and explain in summary what the material does contain.
-12. confidence: "high" when every number was clearly legible and the table structure was unambiguous; "medium" when a label or column had to be interpreted; "low" when groups, arms, or columns were unclear. Explain any interpretation in caution.
+12. Report at most 25 candidates in one answer; if the material holds more, say so in summary so the person can ask again for the rest.
+13. confidence: "high" when every number was clearly legible and the table structure was unambiguous; "medium" when a label or column had to be interpreted; "low" when groups, arms, or columns were unclear. Explain any interpretation in caution.
 
 Never invent a result to be helpful. An empty list is a correct answer when the paper does not report results by group and condition.`;
 
@@ -180,7 +181,7 @@ export async function draftFromPaper(paperId: string, input: DraftInput): Promis
   }
   blocks.push({ type: "text", text: lines.join("\n\n") });
 
-  const r = await callClaudeTool<{ summary?: string; candidates?: any[] }>({ system: SYSTEM, blocks, tool: TOOL, maxTokens: 6000 });
+  const r = await callClaudeTool<{ summary?: string; candidates?: any[] }>({ system: SYSTEM, blocks, tool: TOOL, maxTokens: 8000 });
   if (!r.ok) return r;
   const list = Array.isArray(r.input?.candidates) ? r.input.candidates : [];
   const candidates = list.slice(0, 40).map(normalizeCandidate);
