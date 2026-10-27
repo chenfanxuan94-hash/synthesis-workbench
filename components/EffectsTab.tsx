@@ -11,7 +11,7 @@ import { DoneBox, EXTRACTABLE } from "./CodeTab";
 import { deleteEffect } from "@/lib/actions";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS, TIERS } from "@/lib/config";
 import { STATUS_LABEL } from "@/lib/status";
-import { ago } from "@/lib/format";
+import Ago from "./Ago";
 import type { Candidate, DraftResult } from "@/lib/ai";
 import type { Task } from "@/lib/steps";
 import type { Coding, Effect, Member, Paper, Standing } from "@/lib/types";
@@ -155,7 +155,7 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
                   <td>
                     <div className="sub" style={{ marginTop: 0 }}>
                       {e.ai_assisted && <span className="pill ai">AI draft</span>}{e.ai_assisted ? " checked and saved by " : "entered by "}{nameOf(e.entered_by)}
-                      {e.updated_by && e.updated_by !== e.entered_by ? <>, edited by {nameOf(e.updated_by)}</> : ""} {ago(e.updated_at || e.created_at)}
+                      {e.updated_by && e.updated_by !== e.entered_by ? <>, edited by {nameOf(e.updated_by)}</> : ""} <Ago iso={e.updated_at || e.created_at} />
                     </div>
                   </td>
                   <td>

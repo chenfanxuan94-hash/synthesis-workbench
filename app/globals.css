@@ -19,18 +19,21 @@
 
 * { box-sizing: border-box; }
 
+:root { --serif: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", Georgia, serif; }
+
 html, body {
   margin: 0;
   padding: 0;
   background: var(--page);
   color: var(--ink);
-  font: 17px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font: 18px/1.5 var(--serif);
 }
+button, .btn, input, select, textarea { font-family: var(--serif); }
 
 a { color: var(--maroon); }
 a:hover { color: var(--maroon-dark); }
 
-h1 { font-size: 34px; line-height: 1.2; font-weight: 800; margin: 0 0 10px; color: var(--maroon-dark); letter-spacing: -0.01em; }
+h1 { font-size: 36px; line-height: 1.2; font-weight: 700; margin: 0 0 10px; color: var(--maroon-dark); letter-spacing: 0; }
 h2 { font-size: 22px; font-weight: 700; margin: 36px 0 12px; color: var(--maroon-dark); }
 h3 { font-size: 18px; font-weight: 700; margin: 22px 0 8px; }
 p { margin: 0 0 12px; }
@@ -65,9 +68,9 @@ main.full { padding: 0; max-width: none; }
 .brand-title {
   font-size: 56px;
   line-height: 1.08;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--maroon-dark);
-  letter-spacing: -0.025em;
+  letter-spacing: 0;
   text-align: center;
   text-wrap: balance;
   margin: 28px 0 10px;
@@ -145,7 +148,7 @@ main.home .brand-title { margin-bottom: 34px; }
   margin: 0 0 22px;
 }
 
-.foot { margin-top: 44px; text-align: center; color: var(--muted); font-size: 16px; }
+.foot { margin-top: 44px; text-align: center; color: var(--muted); font-size: 17px; }
 .foot a { margin: 0 10px; }
 .foot form { display: inline; }
 .foot button.link { font-size: 16px; }
@@ -495,14 +498,31 @@ table.cells input[type="number"] { width: 100%; min-width: 0; padding: 6px 4px; 
 
 /* ---------- master list ---------- */
 main.list { max-width: none; }
+.listhead { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 0 0 16px; }
+.listhead h1.brand { font-size: 34px; margin: 0; }
+.addbtn { font-size: 20px; padding: 12px 26px; }
+
+/* the one-line "what next" bar above the list */
+.nextbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 18px; margin: 0 0 18px; font-size: 17px; }
+.nextbar.live { background: var(--maroon-tint); border-color: var(--maroon-line); }
+.nextbar .eyebrow { margin: 0; white-space: nowrap; }
+.nextbar .txt { flex: 1; min-width: 240px; }
+.nextbar .btn { white-space: nowrap; }
+
+/* the add-papers window */
+dialog.modal { border: 0; border-radius: 18px; padding: 0; width: min(1100px, 94vw); max-height: 92vh; background: var(--page); color: var(--ink); box-shadow: 0 24px 60px rgba(33, 27, 28, 0.3); }
+dialog.modal::backdrop { background: rgba(33, 27, 28, 0.45); }
+dialog.modal .modal-body { padding: 22px 28px 30px; max-height: 92vh; overflow: auto; }
+dialog.modal .modal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+dialog.modal .modal-head h2 { margin: 0; font-size: 28px; }
 .summary { font-size: 17px; color: var(--muted); margin: 0 0 14px; }
 .summary a { color: var(--maroon-dark); }
-table.master { font-size: 15px; }
+table.master { font-size: 16px; }
 table.master th, table.master td { padding: 10px 10px; }
 table.master td.paper { min-width: 260px; }
-table.master .paperlink { font-size: 17px; }
-table.master .sub.tiny { font-size: 13px; }
-table.master .lastcol { min-width: 130px; font-size: 15px; }
+table.master .paperlink { font-size: 18px; }
+table.master .sub.tiny { font-size: 14px; }
+table.master .lastcol { min-width: 130px; font-size: 16px; }
 table.master .actions { width: 160px; text-align: right; }
 table.master .actions .btn { margin: 0 0 5px 5px; }
 table.master tr.needsme td:first-child { box-shadow: inset 4px 0 0 var(--maroon); }

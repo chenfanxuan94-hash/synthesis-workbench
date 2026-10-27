@@ -1,18 +1,6 @@
-import Back from "@/components/Back";
-import PageTabs from "@/components/PageTabs";
-import AddPapers from "@/components/AddPapers";
-import { requireMember } from "@/lib/session";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-export const maxDuration = 60;
-
-export default async function NewPaperPage() {
-  await requireMember();
-  return (
-    <main className="center wide">
-      <Back />
-      <PageTabs current="add" />
-      <AddPapers />
-    </main>
-  );
+// Adding papers happens in a window on top of the list now; old links land there.
+export default function NewPaperPage() {
+  redirect("/?add=1");
 }

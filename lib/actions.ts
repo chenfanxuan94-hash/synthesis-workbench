@@ -161,9 +161,9 @@ export async function deletePaper(id: string): Promise<Result> {
 // Form action for the master list: the checked papers are deleted, then the list reloads.
 export async function deleteSelected(formData: FormData) {
   const ids = formData.getAll("ids").map(String);
-  const back = String(formData.get("back") || "/papers");
+  const back = String(formData.get("back") || "/");
   if (ids.length) await deletePapers(ids);
-  redirect(back.startsWith("/papers") ? back : "/papers");
+  redirect(back.startsWith("/") && !back.startsWith("//") ? back : "/");
 }
 
 // The team's final decision on a paper, recorded after talking it through. It overrides the votes either way; null clears it.
@@ -208,6 +208,27 @@ async function extractPages(path: string): Promise<{ pages: string[]; text: stri
   const { text } = await extractText(pdf, { mergePages: false });
   const pages = (Array.isArray(text) ? text : [String(text)]).map((t) => cleanText(t).replace(/[ \t]+\n/g, "\n").trim());
   return { pages, text: pages.join("\n\n") };
+}
+
+// Without a DOI match, the title is guessed from the first page: the first early line that does
+// not look like a journal header, a date line, or an author list, plus the lines it wraps onto.
+function guessTitle(firstPage: string): string {
+  const lines = firstPage.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 14);
+  const noise = /journal|available online|received|accepted|published|copyright|rights reserved|elsevier|springer|wiley|sage|taylor|doi|https?:|www\.|issn|volume|vol\.|\(\d{4}\)|^\d|@|university|department|abstract|keywords|correspond/i;
+  const authorish = (l: string) =>
+    (l.match(/,/g) || []).length >= 2 ||            // Smith, J., Lee, A.
+    /[A-Za-z]\d\b/.test(l) || /[*\u2020\u2021]/.test(l) || // affiliation marks: Brown1, Graso a,*
+    (/\band\b/.test(l) && /^(?:[A-Z][\w.'-]*\s+){1,}(?:and\s+)(?:[A-Z][\w.'-]*\s*)+$/.test(l)); // Susan Brown and Lee Park
+  const parts: string[] = [];
+  for (const l of lines) {
+    if (parts.length === 0) {
+      if (l.length >= 20 && l.length <= 220 && !noise.test(l) && !authorish(l)) parts.push(l);
+      continue;
+    }
+    if (noise.test(l) || authorish(l) || l.length > 120 || parts.length >= 3) break;
+    parts.push(l);
+  }
+  return parts.join(" ").replace(/\s+/g, " ").slice(0, 250);
 }
 
 export type UploadResult =
@@ -256,10 +277,7 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     const hit = await lookupDOI(doi);
     if (hit) meta = { ...meta, ...hit, doi };
   }
-  if (!meta.title) {
-    const firstLine = (pages[0] || "").split("\n").map((s) => s.trim()).find((s) => s.length > 20 && s.length < 200);
-    meta.title = firstLine || filename.replace(/\.pdf$/i, "");
-  }
+  if (!meta.title) meta.title = guessTitle(pages[0] || "") || filename.replace(/\.pdf$/i, "");
   meta.title = cleanText(meta.title);
   meta.abstract = cleanText(meta.abstract);
 

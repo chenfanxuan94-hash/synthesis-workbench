@@ -17,7 +17,7 @@ export const STEPS: Step[] = [
   {
     n: 1, title: "Add papers", who: "Anyone",
     what: "Upload PDFs or import search results. Every paper lands in one master list.",
-    href: "/papers/new", go: "Add papers",
+    href: "/?add=1", go: "Add papers",
   },
   {
     n: 2, title: "Vote on papers", who: "Everyone",
@@ -32,7 +32,7 @@ export const STEPS: Step[] = [
   {
     n: 4, title: "Download the dataset", who: "Whoever runs the analysis",
     what: "One Excel file with every row from the approved papers, ready for analysis.",
-    href: "/dataset", go: "Open dataset",
+    href: "/dataset", go: "Open the dataset",
   },
 ];
 

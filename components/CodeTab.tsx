@@ -11,7 +11,7 @@ import {
   DELIVERY_AGENTS, RISK_OF_BIAS, SETTINGS, REPORTING_LEVELS, MEASURE_VALIDATION,
 } from "@/lib/config";
 import { STATUS_LABEL } from "@/lib/status";
-import { ago } from "@/lib/format";
+import Ago from "./Ago";
 import type { Task } from "@/lib/steps";
 import type { Coding, Effect, Member, Paper, Standing } from "@/lib/types";
 
@@ -64,7 +64,7 @@ export function DoneBox({ paper, coding, effects, task, members }: { paper: Pape
   if (coding?.done) {
     return (
       <div className="note good">
-        <b>This paper is marked done</b> by {nameOf(coding.updated_by || coding.coder_id)} {ago(coding.updated_at)}. Anyone can still edit it; if you change something, you can leave it done or reopen it.
+        <b>This paper is marked done</b> by {nameOf(coding.updated_by || coding.coder_id)} <Ago iso={coding.updated_at} />. Anyone can still edit it; if you change something, you can leave it done or reopen it.
         <div className="row mt" style={{ alignItems: "center" }}>
           {task === "code" && <Link className="btn primary big" href={`/work/code?after=${paper.id}`}>Next paper &rarr;</Link>}
           <button onClick={() => flip(false)} disabled={pending}>Reopen</button>
@@ -129,7 +129,7 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
         <div className="note warn">This paper is not approved yet ({STATUS_LABEL[s.status]}). You can still code it; only approved papers go into the dataset.</div>
       )}
       {coding && (
-        <p className="muted" style={{ margin: 0 }}>Last saved by <b>{nameOf(coding.updated_by || coding.coder_id)}</b> {ago(coding.updated_at)}.</p>
+        <p className="muted" style={{ margin: 0 }}>Last saved by <b>{nameOf(coding.updated_by || coding.coder_id)}</b> <Ago iso={coding.updated_at} />.</p>
       )}
 
       {GROUPS.map((g) => (

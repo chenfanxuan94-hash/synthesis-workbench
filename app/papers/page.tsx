@@ -1,10 +1,10 @@
 import Link from "next/link";
-import Back from "@/components/Back";
 import Help from "@/components/Help";
-import PageTabs from "@/components/PageTabs";
 import VoteChips from "@/components/VoteChips";
+import AddPapersModal from "@/components/AddPapersModal";
+import NextStep from "@/components/NextStep";
 import { RowDelete, DeleteSelectedButton, SelectAll, BULK_FORM } from "@/components/DeleteControls";
-import { deleteSelected } from "@/lib/actions";
+import { deleteSelected, logout } from "@/lib/actions";
 import { requireMember, allMembers } from "@/lib/session";
 import { loadLibrary, type Row } from "@/lib/library";
 import { STATUS_LABEL, RULE, explain } from "@/lib/status";
@@ -33,10 +33,10 @@ const SORTS: { key: string; label: string }[] = [
 
 const PAGE = 150;
 
-export default async function PapersPage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; s?: string; sort?: string; all?: string }> }) {
+export default async function PapersPage({ searchParams }: { searchParams: Promise<{ f?: string; q?: string; s?: string; sort?: string; all?: string; add?: string }> }) {
   const me = await requireMember();
   const members = await allMembers();
-  const { f = "all", q = "", s = "", sort = "new", all } = await searchParams;
+  const { f = "all", q = "", s = "", sort = "new", all, add } = await searchParams;
   const lib = await loadLibrary(me.id);
   const blind = process.env.BLIND_VOTES === "1";
   const nameOf = (id: string | null | undefined) => members.find((m) => m.id === id)?.name || "";
@@ -69,13 +69,17 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
     const vals: Record<string, string> = { f, q, s, sort, all: all || "", ...extra };
     for (const [k, v] of Object.entries(vals)) if (v && !(k === "f" && v === "all") && !(k === "sort" && v === "new")) p.set(k, v);
     const str = p.toString();
-    return "/papers" + (str ? "?" + str : "");
+    return "/" + (str ? "?" + str : "");
   };
 
   return (
     <main className="center wide list">
-      <Back />
-      <PageTabs current="list" />
+      <div className="listhead">
+        <h1 className="brand">CHHSR Meta Analysis Portal</h1>
+        <AddPapersModal openByDefault={add === "1"} />
+      </div>
+
+      <NextStep lib={lib} />
 
       {!lib.ready && (
         <div className="err" style={{ fontSize: 18 }}>
@@ -112,7 +116,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
           {SORTS.map((x) => <option key={x.key} value={x.key}>{x.label}</option>)}
         </select>
         <button type="submit" className="primary">Show</button>
-        {(q || f !== "all" || s || sort !== "new") && <Link href="/papers" className="muted">Clear</Link>}
+        {(q || f !== "all" || s || sort !== "new") && <Link href="/" className="muted">Clear</Link>}
       </form>
 
       <div className="listline">
@@ -145,6 +149,17 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
       {shown.length < rows.length && (
         <p className="muted mt">Showing the first {PAGE} of {rows.length}. <Link href={keep({ all: "1" })}>Show all {rows.length}</Link></p>
       )}
+
+      <div className="foot">
+        <Link href="/guide">Read the guide</Link>
+        <Link href="/dataset">Download the dataset</Link>
+        <div className="mt">
+          Signed in as <b>{me.name}</b> &middot;{" "}
+          <form action={logout}>
+            <button type="submit" className="link">Switch user</button>
+          </form>
+        </div>
+      </div>
     </main>
   );
 }

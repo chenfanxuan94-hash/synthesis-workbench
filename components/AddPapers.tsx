@@ -30,8 +30,10 @@ const SOURCES = [
   "author contact",
 ];
 
-export default function AddPapers() {
+// onAdded fires after every successful add, so the list behind the window can reload.
+export default function AddPapers({ onAdded }: { onAdded?: () => void }) {
   const [mode, setMode] = useState<Mode>("upload");
+  const added = () => onAdded?.();
   return (
     <div>
       <div className="seg" role="tablist">
@@ -41,10 +43,10 @@ export default function AddPapers() {
           </button>
         ))}
       </div>
-      {mode === "upload" && <Upload />}
-      {mode === "doi" && <ByDOI />}
-      {mode === "import" && <Import />}
-      {mode === "manual" && <Manual />}
+      {mode === "upload" && <Upload onAdded={added} />}
+      {mode === "doi" && <ByDOI onAdded={added} />}
+      {mode === "import" && <Import onAdded={added} />}
+      {mode === "manual" && <Manual onAdded={added} />}
     </div>
   );
 }
@@ -62,7 +64,7 @@ function SourceSelect({ value, onChange }: { value: string; onChange: (v: string
 
 type Row = { name: string; status: string; kind: "wait" | "work" | "ok" | "dup" | "fail"; id?: string };
 
-function Upload() {
+function Upload({ onAdded }: { onAdded: () => void }) {
   const [source, setSource] = useState("upload");
   const [log, setLog] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -87,6 +89,7 @@ function Upload() {
         const tail = r.textRead ? "" : " (no text could be read, probably a scan; use the PDF view)";
         if (r.duplicate) upd("already in the library" + tail, "dup", r.id);
         else upd("added" + tail, "ok", r.id);
+        onAdded();
       } catch (e: any) {
         upd("failed: " + (e?.message || "unknown error"), "fail");
       }
@@ -122,7 +125,7 @@ function Upload() {
   );
 }
 
-function ByDOI() {
+function ByDOI({ onAdded }: { onAdded: () => void }) {
   const [doi, setDoi] = useState("");
   const [source, setSource] = useState("");
   const [hit, setHit] = useState<ParsedPaper | null>(null);
@@ -142,6 +145,7 @@ function ByDOI() {
     setBusy(true);
     const r = await createPaper({ ...hit, source: source || "doi lookup" });
     setLastId(r.id);
+    if (!r.duplicate) onAdded();
     setMsg(r.duplicate ? "Already in the library. " : "Added. ");
     setHit(null);
     setDoi("");
@@ -171,7 +175,7 @@ function ByDOI() {
   );
 }
 
-function Import() {
+function Import({ onAdded }: { onAdded: () => void }) {
   const [source, setSource] = useState("");
   const [rows, setRows] = useState<ParsedPaper[]>([]);
   const [msg, setMsg] = useState("");
@@ -189,6 +193,7 @@ function Import() {
     setBusy(true);
     const r = await importPapers(rows, source || "import");
     setMsg(`Imported ${r.added}. Skipped ${r.skipped} already in the library.`);
+    if (r.added > 0) onAdded();
     setRows([]);
     setBusy(false);
   }
@@ -221,7 +226,7 @@ function Import() {
   );
 }
 
-function Manual() {
+function Manual({ onAdded }: { onAdded: () => void }) {
   const empty: ParsedPaper = { title: "", authors: "", year: null, journal: "", doi: "", abstract: "" };
   const [p, setP] = useState<ParsedPaper>(empty);
   const [source, setSource] = useState("");
@@ -238,6 +243,7 @@ function Manual() {
   async function save() {
     const r = await createPaper({ ...p, source: source || "manual" });
     setLastId(r.id);
+    if (!r.duplicate) onAdded();
     setMsg(r.duplicate ? "Already in the library. " : "Added. ");
     if (!r.duplicate) setP(empty);
   }

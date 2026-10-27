@@ -14,7 +14,8 @@ import { saveVote, setPiDecision, updatePaper, deletePaper, signedUpload, finali
 import { standing, explain, needsMyVote, STATUS_LABEL, RULE } from "@/lib/status";
 import { EXCLUSION_REASONS, VOTES_REQUIRED } from "@/lib/config";
 import { TASK_STEP, type Task } from "@/lib/steps";
-import { ago, when, describeAction } from "@/lib/format";
+import { when, describeAction } from "@/lib/format";
+import Ago from "./Ago";
 import type { Activity, Coding, Decision, Effect, Member, Paper, Standing, Vote } from "@/lib/types";
 
 export type PanelTab = "overview" | "vote" | "code" | "effects" | "edit";
@@ -141,8 +142,7 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
       <div className="pane">
         <div className="head">
           <div className="topline">
-            <Link href="/" className="btn primary homebtn"><span aria-hidden="true">&larr;</span> Home</Link>
-            <Link href="/papers" className="btn">All papers</Link>
+            <Link href="/" className="btn primary homebtn"><span aria-hidden="true">&larr;</span> All papers</Link>
             {step && <Link href={`/work/${task}?after=${paper.id}`} className="skip">Skip this paper</Link>}
             <span className="who">{me.name}</span>
           </div>
@@ -225,7 +225,7 @@ function OverviewTab({ paper, me, members, votes, s, coding, effects, activity, 
                   <td className="nowrap"><b>{m.name}</b>{m.id === me.id ? " (you)" : ""}</td>
                   <td className="nowrap">{!v ? <span className="muted">has not voted</span> : hidden ? "voted" : <span className={"pill vote-" + v.decision}>{voteWord(v.decision)}</span>}</td>
                   <td>{v && !hidden ? [v.reason, v.notes].filter(Boolean).join(" - ") : ""}</td>
-                  <td className="nowrap muted">{v ? ago(v.updated_at) : ""}</td>
+                  <td className="nowrap muted">{v ? <Ago iso={v.updated_at} /> : ""}</td>
                 </tr>
               );
             })}
@@ -240,12 +240,12 @@ function OverviewTab({ paper, me, members, votes, s, coding, effects, activity, 
           <tbody>
             <tr>
               <td className="nowrap"><b>Study features</b></td>
-              <td>{coding ? <>saved by {nameOf(coding.updated_by || coding.coder_id)} {ago(coding.updated_at)}</> : <span className="muted">not started</span>}</td>
+              <td>{coding ? <>saved by {nameOf(coding.updated_by || coding.coder_id)} <Ago iso={coding.updated_at} /></> : <span className="muted">not started</span>}</td>
               <td className="nowrap"><button className="small" onClick={() => go("code")}>Open</button></td>
             </tr>
             <tr>
               <td className="nowrap"><b>Effect sizes</b></td>
-              <td>{effects.length === 0 ? <span className="muted">no rows yet</span> : <>{effects.length} {effects.length === 1 ? "row" : "rows"}, last saved by {nameOf(lastEditor(effects))} {ago(lastTime(effects))}</>}</td>
+              <td>{effects.length === 0 ? <span className="muted">no rows yet</span> : <>{effects.length} {effects.length === 1 ? "row" : "rows"}, last saved by {nameOf(lastEditor(effects))} <Ago iso={lastTime(effects)} /></>}</td>
               <td className="nowrap"><button className="small" onClick={() => go("effects")}>Open</button></td>
             </tr>
             <tr>
@@ -410,7 +410,7 @@ function VoteTab({ paper, me, members, votes, s, task, blind, abstractLeft, goEd
           <div className="eyebrow">Your vote</div>
           <div className="big"><span className={"pill vote-" + mine.decision}>{voteWord(mine.decision)}</span>{mine.reason ? <span className="reason"> {mine.reason}</span> : null}</div>
           {mine.notes && <p className="muted" style={{ margin: "6px 0 0" }}>Your note: {mine.notes}</p>}
-          <p style={{ margin: "10px 0 0" }}>Saved {ago(mine.updated_at)}. {statusLine}</p>
+          <p style={{ margin: "10px 0 0" }}>Saved <Ago iso={mine.updated_at} />. {statusLine}</p>
           <div className="row mt" style={{ alignItems: "center" }}>
             {task === "vote" && <Link className="btn primary big" href={next}>Next paper &rarr;</Link>}
             <button onClick={() => setEditing(true)}>Change my vote</button>
@@ -462,7 +462,7 @@ function VoteTab({ paper, me, members, votes, s, task, blind, abstractLeft, goEd
           <table className="grid mt">
             <tbody>
               {others.map((v) => (
-                <tr key={v.id}><td className="nowrap"><b>{nameOf(v.member_id)}</b></td><td className="nowrap"><span className={"pill vote-" + v.decision}>{voteWord(v.decision)}</span></td><td>{[v.reason, v.notes].filter(Boolean).join(" - ")}</td><td className="nowrap muted">{ago(v.updated_at)}</td></tr>
+                <tr key={v.id}><td className="nowrap"><b>{nameOf(v.member_id)}</b></td><td className="nowrap"><span className={"pill vote-" + v.decision}>{voteWord(v.decision)}</span></td><td>{[v.reason, v.notes].filter(Boolean).join(" - ")}</td><td className="nowrap muted"><Ago iso={v.updated_at} /></td></tr>
               ))}
             </tbody>
           </table>
@@ -538,7 +538,7 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
     start(async () => {
       const r = await deletePaper(paper.id);
       if (!r.ok) { setMsg("Could not delete: " + r.error); return; }
-      router.push("/papers");
+      router.push("/");
     });
   }
 
@@ -583,7 +583,7 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
       <fieldset>
         <legend>Final decision <Help text={"For papers the votes did not settle. After the team has talked it through, anyone records the decision here; it overrides the votes either way, and the note and your name are kept with the paper. " + RULE} /></legend>
         {paper.pi_decision ? (
-          <p>Recorded decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)} {ago(paper.pi_at)}{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
+          <p>Recorded decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)} <Ago iso={paper.pi_at} />{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
         ) : (
           <p className="where">No decision recorded. The votes decide ({explain(s)}).</p>
         )}

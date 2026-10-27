@@ -43,7 +43,7 @@ export default async function WorkPage({
         {task === "vote" && lib.split > 0 && `${plural(lib.split, "paper")} ${lib.split === 1 ? "is" : "are"} waiting for a team decision. `}
         {task === "code" && lib.counts.approved === 0 && "No paper has been approved yet; coding starts once a paper has two Include votes. "}
         {task === "code" && lib.counts.approved > 0 && "Every approved paper is marked done. "}
-        Every paper is always open from <Link href="/papers">All papers</Link>.
+        Every paper is always open from <Link href="/">the list</Link>.
       </div>
       {other.length > 0 && (
         <>
