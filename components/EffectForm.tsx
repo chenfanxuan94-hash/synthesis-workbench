@@ -13,7 +13,7 @@ export type Selection = { text: string; page: number | null };
 type Props = {
   paperId: string;
   effect: Effect | null;                 // editing an existing row
-  initial?: Record<string, any> | null;  // a prefilled new row (from a Claude draft)
+  initial?: Record<string, any> | null;  // a prefilled new row (from an AI draft)
   aiDraft?: boolean;
   selection: Selection | null;
   clearSelection: () => void;
@@ -121,7 +121,7 @@ export default function EffectForm({ paperId, effect, initial, aiDraft, selectio
 
       {aiDraft && (
         <div className="note warn" style={{ marginTop: 0 }}>
-          <b>Drafted by Claude.</b> Compare every number below with the paper on the left before you save. Fix anything that is wrong; nothing is saved until you click <b>Save effect</b>.
+          <b>Drafted by AI.</b> Compare every number below with the paper on the left before you save. Fix anything that is wrong; nothing is saved until you click <b>Save effect</b>.
         </div>
       )}
 
@@ -231,7 +231,7 @@ export default function EffectForm({ paperId, effect, initial, aiDraft, selectio
       {v.tier === "subgroup" && (
         <div className="row mt">
           <div><label>{mName}: effect size<Help text="Copy the effect size (d or g) exactly as printed for this group. A positive number should mean the program group scored higher. The app handles the direction using Higher is worse." /></label><N k="sg_d_m" /></div>
-          <div><label>its SE<Help text="The standard error printed next to the effect size. If the paper gives a 95 percent confidence interval instead, write it in Notes and ask Fan." /></label><N k="sg_se_m" /></div>
+          <div><label>its SE<Help text="The standard error printed next to the effect size. If the paper gives a 95 percent confidence interval instead, write it in Notes so the team can convert it." /></label><N k="sg_se_m" /></div>
           <div><label>{cName}: effect size</label><N k="sg_d_c" /></div>
           <div><label>its SE</label><N k="sg_se_c" /></div>
         </div>
@@ -239,7 +239,7 @@ export default function EffectForm({ paperId, effect, initial, aiDraft, selectio
 
       {v.tier === "interaction" && (
         <div className="row mt">
-          <div><label>Interaction coefficient<Help text="The number for the treatment by group term (for example Treatment x Black), exactly as printed. Ask Fan if you are not sure which number this is." /></label><N k="int_coef" /></div>
+          <div><label>Interaction coefficient<Help text="The number for the treatment by group term (for example Treatment x Black), exactly as printed. If you are not sure which number this is, write a note and leave it blank." /></label><N k="int_coef" /></div>
           <div><label>its SE</label><N k="int_se" /></div>
           <div>
             <label>Scale<Help text="Standardized if the paper says the outcome was standardized (in SD units). Otherwise raw. If unsure, choose raw and add a note." /></label>

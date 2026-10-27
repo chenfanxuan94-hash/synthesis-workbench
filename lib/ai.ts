@@ -1,4 +1,4 @@
-// Claude-drafted effect rows. The model reads a screenshot of a results table, or pages of
+// AI-drafted effect rows. The model reads a screenshot of a results table, or pages of
 // the paper's extracted text, and proposes rows for the Effect sizes form. It only transcribes:
 // every number it returns is printed in the paper, and a person checks each row before saving.
 import { db } from "./supabase";
@@ -144,7 +144,7 @@ export function normalizeCandidate(raw: any): Candidate {
 }
 
 export async function draftFromPaper(paperId: string, input: DraftInput): Promise<DraftResult> {
-  if (!aiConfigured()) return { ok: false, error: "Claude is not set up yet. Fan needs to add ANTHROPIC_API_KEY to the Vercel project settings." };
+  if (!aiConfigured()) return { ok: false, error: "AI drafts are not set up yet. Add ANTHROPIC_API_KEY in the Vercel project settings." };
   if (!input.image && !input.pages) return { ok: false, error: "Add a screenshot of the results table, or choose pages of the paper's text." };
 
   const { data: paper } = await db().from("papers").select("title,first_author,year,pages").eq("id", paperId).maybeSingle();

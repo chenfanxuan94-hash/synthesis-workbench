@@ -105,12 +105,12 @@ export type Activity = {
   created_at: string;
 };
 
-// Where a paper stands, worked out from the votes and the PI's decision.
+// Where a paper stands, worked out from the votes and any recorded final decision.
 export type PaperStatus = "needs_votes" | "approved" | "rejected" | "split";
 
 export type Standing = {
   status: PaperStatus;
-  byPI: boolean;          // the status comes from the PI's decision, not the votes
+  byPI: boolean;          // the status comes from a recorded final decision, not the votes
   include: number;        // votes cast each way
   exclude: number;
   unsure: number;

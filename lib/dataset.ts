@@ -1,5 +1,5 @@
 // Builds the analysis-ready dataset: one row per extracted effect from the APPROVED papers
-// (approved by votes, or by the PI's decision), with the paper's shared coding attached.
+// (approved by votes, or by a recorded final decision), with the paper's shared coding attached.
 import ExcelJS from "exceljs";
 import { selectAll } from "./db";
 import { standing } from "./status";
@@ -14,7 +14,7 @@ export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "year", label: "year", def: "Publication year." },
   { key: "doi", label: "doi", def: "DOI when known." },
   { key: "source", label: "source", def: "How the record entered the library (seed list, database search, upload, manual)." },
-  { key: "approved_by", label: "approved_by", def: "votes (two Include votes, no Exclude) or PI (the PI's decision)." },
+  { key: "approved_by", label: "approved_by", def: "votes (two Include votes, no Exclude) or decision (a final decision recorded by the team)." },
   { key: "coding_done", label: "coding_done", def: "TRUE when the team marked the paper done. Rows from unfinished papers are included but may still change." },
   { key: "study_design", label: "study_design", def: "RCT, cluster RCT, quasi-experiment, other." },
   { key: "targeting_level", label: "targeting_level", def: "Universal, selective, indicated, or mixed/unclear. Moderator for Hypothesis 1." },
@@ -82,7 +82,7 @@ export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "quote", label: "quote", def: "Verbatim text the numbers were taken from." },
   { key: "entered_by", label: "entered_by", def: "Who entered the row." },
   { key: "last_edited_by", label: "last_edited_by", def: "Who last saved the row." },
-  { key: "ai_assisted", label: "ai_assisted", def: "TRUE when Claude drafted the row from a screenshot or the text and a person checked it before saving." },
+  { key: "ai_assisted", label: "ai_assisted", def: "TRUE when the AI drafted the row from a screenshot or the text and a person checked it before saving." },
   { key: "notes", label: "notes", def: "Extractor notes." },
 ];
 
@@ -134,16 +134,16 @@ export async function buildDataset(): Promise<Dataset> {
     const study = `${p.first_author || "?"} ${p.year || ""}`.trim();
     const pr: PaperRow = {
       paper_id: p.id, study, title: p.title, authors: p.authors, year: p.year, journal: p.journal, doi: p.doi, source: p.source,
-      status: s.byPI ? (s.status === "approved" ? "approved by PI" : "rejected by PI") : s.status.replace("_", " "),
+      status: s.byPI ? (s.status === "approved" ? "approved by decision" : "rejected by decision") : s.status.replace("_", " "),
       include_votes: s.include, exclude_votes: s.exclude, unsure_votes: s.unsure,
     };
     for (const m of members) {
       const v = votes.find((x) => x.member_id === m.id);
       pr["vote_" + m.name] = v ? (v.decision === "unsure" ? "not sure" : v.decision) + (v.reason ? ` (${v.reason})` : "") : null;
     }
-    pr.pi_decision = p.pi_decision;
-    pr.pi_note = p.pi_note;
-    pr.pi_by = name(p.pi_by);
+    pr.final_decision = p.pi_decision;
+    pr.decision_note = p.pi_note;
+    pr.decision_by = name(p.pi_by);
     pr.coding_done = c ? c.done : false;
     pr.coding_last_saved_by = c ? name(c.updated_by || c.coder_id) : null;
     pr.effect_rows = effs.length;
@@ -166,7 +166,7 @@ export async function buildDataset(): Promise<Dataset> {
         else if (k === "year") row[k] = p.year ?? null;
         else if (k === "doi") row[k] = p.doi ?? null;
         else if (k === "source") row[k] = p.source ?? null;
-        else if (k === "approved_by") row[k] = s.byPI ? "PI" : "votes";
+        else if (k === "approved_by") row[k] = s.byPI ? "decision" : "votes";
         else if (k === "coding_done") row[k] = c ? c.done : false;
         else if (k === "entered_by") row[k] = name(e.entered_by);
         else if (k === "last_edited_by") row[k] = name(e.updated_by || e.entered_by);
@@ -195,9 +195,9 @@ export function toCSV(rows: DatasetRow[]): string {
 const PAPER_DEFS: Record<string, string> = {
   paper_id: "Unique id of the paper.", study: "First author and year.", title: "Paper title.", authors: "Authors as recorded.", year: "Publication year.",
   journal: "Journal.", doi: "DOI when known.", source: "How the record entered the library.",
-  status: "needs votes, approved, rejected, PI decides, approved by PI, or rejected by PI.",
+  status: "needs votes, approved, rejected, split (needs a decision), approved by decision, or rejected by decision.",
   include_votes: "Number of Include votes.", exclude_votes: "Number of Exclude votes.", unsure_votes: "Number of Not sure votes.",
-  pi_decision: "include or exclude when the PI decided over the votes.", pi_note: "The PI's note.", pi_by: "Who made the PI decision.",
+  final_decision: "include or exclude when the team recorded a final decision over the votes.", decision_note: "The note recorded with the decision.", decision_by: "Who recorded the decision.",
   coding_done: "TRUE when the paper was marked done.", coding_last_saved_by: "Who last saved the study features.",
   effect_rows: "Number of effect rows entered.", pdf: "TRUE when a PDF is attached.",
 };

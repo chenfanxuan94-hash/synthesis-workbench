@@ -22,7 +22,7 @@ type Drafts = { candidates: Candidate[]; summary: string; source: string; model:
 function candidateToInitial(c: Candidate): Record<string, any> {
   const v: Record<string, any> = { ...c };
   delete v.confidence; delete v.caution;
-  v.notes = c.caution ? "Claude noted: " + c.caution : "";
+  v.notes = c.caution ? "AI noted: " + c.caution : "";
   return v;
 }
 
@@ -72,7 +72,7 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
       <Instructions id="effects" title="What to do: copy the numbers by group">
         <ol>
           <li>Find the results split by group (Black vs White, Latinx vs White, or lower vs higher income): the Results section, the tables, or the online supplement.</li>
-          <li><b>Fast way:</b> click <b>Let Claude draft the rows</b>, paste a screenshot of the table, and check each draft row against the paper before saving it.</li>
+          <li><b>Fast way:</b> click <b>Draft the rows with AI</b>, paste a screenshot of the table, and check each draft row against the paper before saving it.</li>
           <li><b>By hand:</b> click <b>Add a row by hand</b>. To copy numbers quickly, <button className="link" onClick={showText}>switch the left side to Text</button>, select the sentence or table row with your mouse, then click each number in the yellow box.</li>
           <li>Check that the green Result box shows a number, then click <b>Save effect</b>. One row per outcome, per group comparison, per time point.</li>
           <li>When every row is in, click <b>Mark this paper done</b>.</li>
@@ -95,12 +95,12 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
 
       {editing === null && (
         <div className="row">
-          <button className="primary big" onClick={() => { setShowAi(true); }} disabled={!aiReady} title={aiReady ? "" : "Claude is not set up yet"}>Let Claude draft the rows</button>
+          <button className="primary big" onClick={() => { setShowAi(true); }} disabled={!aiReady} title={aiReady ? "" : "AI drafts are not set up yet"}>Draft the rows with AI</button>
           <button className="big" onClick={() => setEditing({ mode: "new" })}>+ Add a row by hand</button>
         </div>
       )}
       {!aiReady && editing === null && (
-        <p className="muted" style={{ margin: 0 }}>Claude drafts are not set up yet: Fan needs to add the <span className="mono">ANTHROPIC_API_KEY</span> in the Vercel project settings.</p>
+        <p className="muted" style={{ margin: 0 }}>AI drafts are not set up yet: add the <span className="mono">ANTHROPIC_API_KEY</span> in the Vercel project settings.</p>
       )}
 
       {showAi && editing === null && (
@@ -112,7 +112,7 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
       {drafts && !showAi && editing === null && (
         <div className="draftbox" ref={draftsRef}>
           <div className="aihead">
-            <b>Claude found {drafts.candidates.length} {drafts.candidates.length === 1 ? "row" : "rows"}</b> <span className="muted">from {drafts.source}</span>
+            <b>The AI found {drafts.candidates.length} {drafts.candidates.length === 1 ? "row" : "rows"}</b> <span className="muted">from {drafts.source}</span>
             <button className="link" style={{ marginLeft: "auto" }} onClick={() => setDrafts(null)}>clear</button>
           </div>
           {drafts.summary && <p style={{ margin: "6px 0 10px" }}>{drafts.summary}</p>}
@@ -154,7 +154,7 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
                   <td className="nowrap">{e.delta === null ? <span className="pill split">incomplete</span> : `${fmt(e.delta)} (${fmt(e.var_delta !== null ? Math.sqrt(e.var_delta) : null)})`}</td>
                   <td>
                     <div className="sub" style={{ marginTop: 0 }}>
-                      {e.ai_assisted && <span className="pill ai">Claude draft</span>}{e.ai_assisted ? " checked and saved by " : "entered by "}{nameOf(e.entered_by)}
+                      {e.ai_assisted && <span className="pill ai">AI draft</span>}{e.ai_assisted ? " checked and saved by " : "entered by "}{nameOf(e.entered_by)}
                       {e.updated_by && e.updated_by !== e.entered_by ? <>, edited by {nameOf(e.updated_by)}</> : ""} {ago(e.updated_at || e.created_at)}
                     </div>
                   </td>
@@ -205,7 +205,7 @@ function DraftCard({ c, onUse, onSkip }: { c: Candidate; onUse: () => void; onSk
       {c.tier === "subgroup" && <div className="mono">{c.marginalized_group}: {n(c.sg_d_m)} (SE {n(c.sg_se_m)}) &nbsp; {c.comparison_group}: {n(c.sg_d_c)} (SE {n(c.sg_se_c)})</div>}
       {c.tier === "interaction" && <div className="mono">interaction {n(c.int_coef)} (SE {n(c.int_se)}), {c.int_scale}</div>}
       <div className="sub">{c.page ? `p. ${c.page} ` : ""}{c.source_label}{c.quote ? <> &middot; <i>&quot;{c.quote.length > 220 ? c.quote.slice(0, 220) + "..." : c.quote}&quot;</i></> : ""}</div>
-      {c.caution && <div className="caution">Claude notes: {c.caution}</div>}
+      {c.caution && <div className="caution">AI notes: {c.caution}</div>}
       <div className="row mt" style={{ gap: 8 }}>
         <button className="primary" onClick={onUse}>Use this row</button>
         <button onClick={onSkip}>Skip</button>

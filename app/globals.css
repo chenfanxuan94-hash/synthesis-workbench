@@ -38,9 +38,9 @@ p { margin: 0 0 12px; }
 .muted { color: var(--muted); }
 
 /* ---------- page frames ---------- */
-main { padding: 28px 28px 72px; max-width: 1280px; margin: 0 auto; }
-main.center { max-width: 780px; }
-main.wide { max-width: 1120px; }
+main { padding: 28px 36px 72px; max-width: 1400px; margin: 0 auto; }
+main.center { max-width: 1000px; }
+main.wide { max-width: 1400px; }
 main.full { padding: 0; max-width: none; }
 
 .back {
@@ -76,6 +76,7 @@ main.full { padding: 0; max-width: none; }
   .brand-title { margin-left: -150px; margin-right: -150px; }
 }
 .hello { text-align: center; font-size: 21px; color: var(--muted); margin: 0 0 40px; }
+main.home .brand-title { margin-bottom: 34px; }
 
 .flow { list-style: none; margin: 0; padding: 0; }
 .flow li {
@@ -244,6 +245,10 @@ main.full { padding: 0; max-width: none; }
 .statusbox.split { background: var(--amber-bg); color: var(--amber-ink); }
 .statusbox.approved { background: var(--green-bg); color: var(--green-ink); }
 .statusbox.rejected { background: var(--red-bg); color: var(--red-ink); }
+.votedbox { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; }
+.votedbox .big { font-size: 20px; font-weight: 700; margin-top: 4px; }
+.votedbox .big .pill { font-size: 18px; padding: 4px 16px; }
+.votedbox .reason { font-weight: 500; }
 .history { list-style: none; margin: 0; padding: 0; }
 .history li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 16px; }
 .history li:last-child { border-bottom: 0; }
@@ -428,7 +433,8 @@ legend { font-weight: 800; padding: 0 12px 0 0; color: var(--maroon-dark); font-
 .pane.left { border-right: 3px solid var(--maroon-line); }
 .pane .head { padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--page); }
 .pane .head .topline { display: flex; align-items: center; gap: 18px; margin-bottom: 6px; font-size: 16px; }
-.pane .head .topline .back { margin: 0; padding: 0; }
+.pane .head .topline .homebtn { font-size: 17px; font-weight: 800; padding: 9px 20px; border-radius: 12px; }
+.pane .head .topline .skip { margin-left: 4px; }
 .pane .head .topline .who { margin-left: auto; color: var(--muted); font-size: 15px; }
 .pane .head .title { font-weight: 800; font-size: 21px; line-height: 1.3; margin: 2px 0 2px; color: var(--ink); }
 .pane .head .meta { color: var(--muted); font-size: 16px; }
@@ -488,7 +494,7 @@ table.cells input[type="number"] { width: 100%; min-width: 0; padding: 6px 4px; 
 .pagetabs a.on { color: var(--maroon-dark); border-bottom-color: var(--maroon); font-weight: 800; }
 
 /* ---------- master list ---------- */
-main.list { max-width: 1320px; }
+main.list { max-width: none; }
 .summary { font-size: 17px; color: var(--muted); margin: 0 0 14px; }
 .summary a { color: var(--maroon-dark); }
 table.master { font-size: 15px; }

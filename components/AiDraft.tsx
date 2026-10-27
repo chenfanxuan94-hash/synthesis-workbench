@@ -78,8 +78,8 @@ export default function AiDraft({ paperId, pageCount, onResult, onClose }: {
   return (
     <div className="aipanel">
       <div className="aihead">
-        <b>Let Claude draft the rows</b>
-        <Help text="Claude reads the table and fills in the form fields for you. It only copies what is printed; it never calculates. You still check every number against the paper before saving, and each saved row is marked as drafted by Claude." />
+        <b>Draft the rows with AI</b>
+        <Help text="The AI reads the table and fills in the form fields for you. It only copies what is printed; it never calculates. You still check every number against the paper before saving, and each saved row is marked as an AI draft." />
         <button className="link" style={{ marginLeft: "auto" }} onClick={onClose}>close</button>
       </div>
       <div className="aimodes">
@@ -119,7 +119,7 @@ export default function AiDraft({ paperId, pageCount, onResult, onClose }: {
       )}
 
       <div className="mt">
-        <label className="block" style={{ marginTop: 0 }}>Tell Claude what to look for (optional)</label>
+        <label className="block" style={{ marginTop: 0 }}>Tell the AI what to look for (optional)</label>
         <input value={hint} onChange={(e) => setHint(e.target.value)} placeholder="for example: Table 3, sessions attended by race, post-test" style={{ width: "100%" }} />
       </div>
       {err && <div className="err">{err}</div>}

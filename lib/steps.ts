@@ -15,12 +15,7 @@ export type Step = {
 
 export const STEPS: Step[] = [
   {
-    n: 0, title: "Read the guide", who: "Everyone, once",
-    what: "About ten minutes. Explains the project, the words we use, and each step below.",
-    href: "/guide", go: "Open the guide",
-  },
-  {
-    n: 1, title: "Add papers", who: "Usually Fan",
+    n: 1, title: "Add papers", who: "Anyone",
     what: "Upload PDFs or import search results. Every paper lands in one master list.",
     href: "/papers/new", go: "Add papers",
   },
@@ -31,20 +26,24 @@ export const STEPS: Step[] = [
   },
   {
     n: 3, title: "Code approved papers", who: "Everyone, on a shared form",
-    what: "Record the study features and copy the numbers by group. Claude can draft the numbers from a screenshot; you check them. Mark the paper done when finished.",
+    what: "Record the study features and copy the numbers by group. AI can draft the numbers from a screenshot; you check them. Mark the paper done when finished.",
     href: "/work/code", go: "Start coding", task: "code",
   },
   {
-    n: 4, title: "Download the dataset", who: "Usually Fan",
+    n: 4, title: "Download the dataset", who: "Whoever runs the analysis",
     what: "One Excel file with every row from the approved papers, ready for analysis.",
     href: "/dataset", go: "Open dataset",
   },
 ];
 
 export const TASK_STEP: Record<Task, Step> = {
-  vote: STEPS[2],
-  code: STEPS[3],
+  vote: STEPS[1],
+  code: STEPS[2],
 };
+
+export function stepByNumber(n: number): Step {
+  return STEPS.find((s) => s.n === n) || STEPS[0];
+}
 
 export const TASK_ORDER: Task[] = ["vote", "code"];
 

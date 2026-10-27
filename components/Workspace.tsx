@@ -69,7 +69,7 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
       <div className="note info">
         <b>No PDF for this paper yet.</b>{" "}
         {tab === "vote" ? "You can vote from the title and abstract. " : "Coding needs the PDF. "}
-        To add it, find the paper (Google Scholar, the university library, or ask Fan), then upload it in the Edit details tab.
+        To add it, find the paper (Google Scholar, the university library, or ask a teammate), then upload it in the Edit details tab.
         <div className="mt"><button className="primary small" onClick={() => setTab("edit")}>Open Edit details</button></div>
       </div>
     </div>
@@ -94,7 +94,7 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
   const label = (t: PanelTab) =>
     t === "overview" ? "Overview" : t === "vote" ? "Vote" : t === "code" ? "Code" : t === "effects" ? `Effect sizes${effects.length ? ` (${effects.length})` : ""}` : "Edit details";
 
-  const statusText = s.byPI ? (s.status === "approved" ? "Approved by PI" : "Rejected by PI") : s.status === "needs_votes" ? `Needs votes ${s.include + s.exclude}/${VOTES_REQUIRED}` : STATUS_LABEL[s.status];
+  const statusText = s.byPI ? (s.status === "approved" ? "Approved by decision" : "Rejected by decision") : s.status === "needs_votes" ? `Needs votes ${s.include + s.exclude}/${VOTES_REQUIRED}` : STATUS_LABEL[s.status];
 
   return (
     <div className="workspace">
@@ -121,7 +121,7 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
             <div className="pages" ref={textRef} onMouseUp={onMouseUp}>
               {pages.length === 0 && (
                 <div className="note warn">
-                  No text could be read from this PDF. It is probably a scanned image. Read it in the PDF view, and use a screenshot for Claude drafts.
+                  No text could be read from this PDF. It is probably a scanned image. Read it in the PDF view, and use a screenshot for the AI drafts.
                 </div>
               )}
               {pages.map((t, i) => {
@@ -141,9 +141,9 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
       <div className="pane">
         <div className="head">
           <div className="topline">
-            <Link href="/" className="back"><span aria-hidden="true">&larr;</span> Home</Link>
-            <Link href="/papers">All papers</Link>
-            {step && <Link href={`/work/${task}?after=${paper.id}`}>Skip this paper</Link>}
+            <Link href="/" className="btn primary homebtn"><span aria-hidden="true">&larr;</span> Home</Link>
+            <Link href="/papers" className="btn">All papers</Link>
+            {step && <Link href={`/work/${task}?after=${paper.id}`} className="skip">Skip this paper</Link>}
             <span className="who">{me.name}</span>
           </div>
           {step ? (
@@ -208,7 +208,7 @@ function OverviewTab({ paper, me, members, votes, s, coding, effects, activity, 
   return (
     <div className="stack">
       <div className={"statusbox " + s.status}>
-        <div className="big">{s.byPI ? (s.status === "approved" ? "Approved by the PI" : "Rejected by the PI") : STATUS_LABEL[s.status]}</div>
+        <div className="big">{s.byPI ? (s.status === "approved" ? "Approved by a team decision" : "Rejected by a team decision") : STATUS_LABEL[s.status]}</div>
         <div>{explain(s, hideOthers ? [] : names)}{s.byPI && paper.pi_note ? ` Note: ${paper.pi_note}` : ""}</div>
         {mine && <div className="mt"><button className="primary" onClick={() => go("vote")}>Cast your vote &rarr;</button></div>}
       </div>
@@ -351,7 +351,8 @@ function VoteTab({ paper, me, members, votes, s, task, blind, abstractLeft, goEd
   const [reason, setReason] = useState(mine?.reason || "");
   const [notes, setNotes] = useState(mine?.notes || "");
   const [err, setErr] = useState("");
-  const [saved, setSaved] = useState(false);
+  // Once a vote is saved the step shows as a read-only summary; Change my vote reopens the form.
+  const [editing, setEditing] = useState(!mine);
   const [pending, start] = useTransition();
   const router = useRouter();
   const others = votes.filter((v) => v.member_id !== me.id);
@@ -365,83 +366,93 @@ function VoteTab({ paper, me, members, votes, s, task, blind, abstractLeft, goEd
     start(async () => {
       const r = await saveVote(paper.id, decision, decision === "exclude" ? reason : "", notes);
       if (!r.ok) { setErr(r.error); return; }
-      setSaved(true);
+      setEditing(false);
       router.refresh();
     });
   }
 
+  const statusLine = s.byPI
+    ? `The paper is ${s.status === "approved" ? "approved" : "rejected"} by a recorded team decision.`
+    : s.status === "needs_votes" ? `The paper is approved or rejected once ${VOTES_REQUIRED} people have voted.`
+    : s.status === "split" ? "Someone voted the other way. Talk it through as a team and record the decision in Edit details."
+    : s.status === "approved" ? "The paper is approved." : "The paper is rejected.";
+
   return (
     <div className="stack">
-      <Instructions id="vote" title="What to do: vote on this paper">
-        <ol>
-          <li>{abstractLeft ? "Read the title and abstract on the left." : "Read the abstract below, or the paper on the left."}</li>
-          <li>Answer the seven checklist questions from what you can read. If it does not say, choose <b>Not sure</b>.</li>
-          <li>Look at the suggested vote. Change it if you disagree, and add a note if something was unclear.</li>
-          <li>Click <b>Save my vote</b>{task === "vote" ? <>, then <b>Next paper</b></> : ""}.</li>
-        </ol>
-        <p style={{ margin: 0 }}>{RULE} Every paper stays in All papers whatever you vote, so you can always come back to it.</p>
-      </Instructions>
+      {editing && (
+        <Instructions id="vote" title="What to do: vote on this paper">
+          <ol>
+            <li>{abstractLeft ? "Read the title and abstract on the left." : "Read the abstract below, or the paper on the left."}</li>
+            <li>Answer the seven checklist questions from what you can read. If it does not say, choose <b>Not sure</b>.</li>
+            <li>Look at the suggested vote. Change it if you disagree, and add a note if something was unclear.</li>
+            <li>Click <b>Save my vote</b>{task === "vote" ? <>, then <b>Next paper</b></> : ""}.</li>
+          </ol>
+          <p style={{ margin: 0 }}>{RULE} Every paper stays in All papers whatever you vote, so you can always come back to it.</p>
+        </Instructions>
+      )}
 
       {s.byPI && (
-        <div className="note info"><b>{s.status === "approved" ? "Approved" : "Rejected"} by the PI</b>{paper.pi_note ? `: ${paper.pi_note}` : "."} Your vote is still recorded, but the PI&apos;s decision stands.</div>
+        <div className="note info"><b>{s.status === "approved" ? "Approved" : "Rejected"} by a recorded team decision</b>{paper.pi_note ? `: ${paper.pi_note}` : "."} Your vote is still recorded, but the recorded decision stands.</div>
       )}
 
       {abstractLeft ? null : paper.abstract ? (
-        <div className="card"><h3 style={{ marginTop: 0 }}>Abstract</h3><p style={{ margin: 0 }}>{paper.abstract}</p></div>
-      ) : (
+        editing
+          ? <div className="card"><h3 style={{ marginTop: 0 }}>Abstract</h3><p style={{ margin: 0 }}>{paper.abstract}</p></div>
+          : <details className="card"><summary><b>Abstract</b> (click to show)</summary><p className="mt" style={{ marginBottom: 0 }}>{paper.abstract}</p></details>
+      ) : editing ? (
         <div className="note warn">
           This record has no abstract. Decide from the PDF or the title, or look the paper up online and paste its abstract in Edit details.
         </div>
-      )}
+      ) : null}
 
-      <fieldset>
-        <legend>Your vote</legend>
-        <div className="stack">
-          <Checklist onSuggest={(d, r) => { setDecision(d); setReason(r); setSaved(false); }} />
-          <div>
-            <b>Vote</b>
-            <div className="choices mt">
-              {(["include", "exclude", "unsure"] as Decision[]).map((d) => (
-                <button key={d} type="button" className={d + (decision === d ? " on" : "")} onClick={() => { setDecision(d); setSaved(false); }}>{voteWord(d)}</button>
-              ))}
-            </div>
-          </div>
-          {decision === "exclude" && (
-            <div>
-              <label className="block">Reason for excluding</label>
-              <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "100%" }}>
-                <option value="">Choose the first rule the paper fails</option>
-                {EXCLUSION_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="block">Notes (optional)</label>
-            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the others should know, for example what you could not tell" />
-          </div>
-          {err && <div className="err">{err}</div>}
-          <div className="row" style={{ alignItems: "center" }}>
-            <button className="primary big" onClick={save} disabled={pending || !decision || (decision === "exclude" && !reason)}>
-              {pending ? "Saving..." : mine ? "Update my vote" : "Save my vote"}
-            </button>
-            {decision === "exclude" && !reason && <span>Choose a reason to save.</span>}
+      {mine && !editing ? (
+        <div className="votedbox">
+          <div className="eyebrow">Your vote</div>
+          <div className="big"><span className={"pill vote-" + mine.decision}>{voteWord(mine.decision)}</span>{mine.reason ? <span className="reason"> {mine.reason}</span> : null}</div>
+          {mine.notes && <p className="muted" style={{ margin: "6px 0 0" }}>Your note: {mine.notes}</p>}
+          <p style={{ margin: "10px 0 0" }}>Saved {ago(mine.updated_at)}. {statusLine}</p>
+          <div className="row mt" style={{ alignItems: "center" }}>
+            {task === "vote" && <Link className="btn primary big" href={next}>Next paper &rarr;</Link>}
+            <button onClick={() => setEditing(true)}>Change my vote</button>
           </div>
         </div>
-        {mine && (
-          <div className="note good">
-            Your vote is saved: <b>{voteWord(mine.decision)}</b>{mine.reason ? ` - ${mine.reason}` : ""}.{" "}
-            {!s.byPI && s.status === "needs_votes" && `The paper is approved or rejected once ${VOTES_REQUIRED} people have voted.`}
-            {!s.byPI && s.status === "split" && "Someone voted the other way, so the PI decides."}
-            {!s.byPI && s.status === "approved" && "The paper is approved."}
-            {!s.byPI && s.status === "rejected" && "The paper is rejected."}
-            {(saved || task === "vote") && (
-              <div className="mt">
-                {task === "vote" ? <Link className="btn primary big" href={next}>Next paper &rarr;</Link> : <Link className="btn" href="/papers">Back to all papers</Link>}
+      ) : (
+        <fieldset>
+          <legend>{mine ? "Change your vote" : "Your vote"}</legend>
+          <div className="stack">
+            <Checklist onSuggest={(d, r) => { setDecision(d); setReason(r); }} />
+            <div>
+              <b>Vote</b>
+              <div className="choices mt">
+                {(["include", "exclude", "unsure"] as Decision[]).map((d) => (
+                  <button key={d} type="button" className={d + (decision === d ? " on" : "")} onClick={() => setDecision(d)}>{voteWord(d)}</button>
+                ))}
+              </div>
+            </div>
+            {decision === "exclude" && (
+              <div>
+                <label className="block">Reason for excluding</label>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: "100%" }}>
+                  <option value="">Choose the first rule the paper fails</option>
+                  {EXCLUSION_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
               </div>
             )}
+            <div>
+              <label className="block">Notes (optional)</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the others should know, for example what you could not tell" />
+            </div>
+            {err && <div className="err">{err}</div>}
+            <div className="row" style={{ alignItems: "center" }}>
+              <button className="primary big" onClick={save} disabled={pending || !decision || (decision === "exclude" && !reason)}>
+                {pending ? "Saving..." : mine ? "Save my new vote" : "Save my vote"}
+              </button>
+              {mine && <button onClick={() => { setEditing(false); setDecision(mine.decision); setReason(mine.reason || ""); setNotes(mine.notes || ""); }} disabled={pending}>Keep my vote</button>}
+              {decision === "exclude" && !reason && <span>Choose a reason to save.</span>}
+            </div>
           </div>
-        )}
-      </fieldset>
+        </fieldset>
+      )}
 
       <div>
         <b>Other people&apos;s votes</b>
@@ -476,7 +487,7 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
   const [piMsg, setPiMsg] = useState("");
   const router = useRouter();
   const set = (k: string, val: any) => setV((x) => ({ ...x, [k]: val }));
-  const nameOf = (id: string | null) => members.find((m) => m.id === id)?.name || "the PI";
+  const nameOf = (id: string | null) => members.find((m) => m.id === id)?.name || "someone";
 
   function save() {
     start(async () => {
@@ -493,17 +504,17 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
       const link = await signedUpload(file.name);
       if (!link.ok) { setMsg("Upload failed. " + link.error); return; }
       const res = await fetch(link.url, { method: "PUT", body: file, headers: { "Content-Type": "application/pdf" } });
-      if (!res.ok) { setMsg("Upload failed: the file was not accepted by storage (" + res.status + "). Try again or tell Fan."); return; }
+      if (!res.ok) { setMsg("Upload failed: the file was not accepted by storage (" + res.status + "). Try again or tell the team."); return; }
       setMsg("Reading the text...");
       const r = await finalizeUpload(link.path, file.name, paper.id);
       if (!r.ok) { setMsg("Upload failed. " + r.error); return; }
       setMsg(r.textRead
         ? "PDF attached. It now shows on the left."
-        : "PDF attached and showing on the left, but no text could be read from it (it is probably a scanned image). Use the PDF view, and screenshots for Claude drafts.");
+        : "PDF attached and showing on the left, but no text could be read from it (it is probably a scanned image). Use the PDF view, and screenshots for the AI drafts.");
       onAttached();
       router.refresh();
     } catch (e: any) {
-      setMsg("Upload failed. Check your internet connection and try again; if it keeps failing, tell Fan. (" + (e?.message || "unknown error") + ")");
+      setMsg("Upload failed. Check your internet connection and try again; if it keeps failing, tell the team. (" + (e?.message || "unknown error") + ")");
     } finally {
       setUploading(false);
     }
@@ -539,7 +550,7 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
           <p>A PDF is attached and shows on the left. To replace it, drop a new file below.</p>
         ) : (
           <div className="note warn" style={{ marginTop: 0 }}>
-            No PDF yet. Find the paper on Google Scholar (click <b>All versions</b> for free copies), through the university library, or ask Fan. Save it to your computer, then drop it below.
+            No PDF yet. Find the paper on Google Scholar (click <b>All versions</b> for free copies), through the university library, or ask a teammate. Save it to your computer, then drop it below.
           </div>
         )}
         <DropZone
@@ -569,26 +580,22 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
         <div className="mt"><button className="primary" onClick={save} disabled={pending}>Save details</button></div>
       </fieldset>
 
-      {me.is_pi ? (
-        <fieldset>
-          <legend>PI decision <Help text={"Use this to settle a split vote, or to approve or reject a paper whatever the votes say. " + RULE} /></legend>
-          {paper.pi_decision ? (
-            <p>Current decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)} {ago(paper.pi_at)}{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
-          ) : (
-            <p className="where">No decision recorded. The votes decide ({explain(s)}).</p>
-          )}
-          <label className="block">Note (why)</label>
-          <textarea value={piNote} onChange={(e) => setPiNote(e.target.value)} style={{ minHeight: 60 }} placeholder="For example: discussed with Kim on Nov 3; the control group is a wait-list, which counts" />
-          <div className="row mt">
-            <button className="primary" onClick={() => decide("include")} disabled={pending}>Approve this paper</button>
-            <button onClick={() => decide("exclude")} disabled={pending}>Reject this paper</button>
-            {paper.pi_decision && <button onClick={() => decide(null)} disabled={pending}>Clear my decision</button>}
-          </div>
-          {piMsg && <p className="mt"><b>{piMsg}</b></p>}
-        </fieldset>
-      ) : paper.pi_decision ? (
-        <p className="muted">PI decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)}{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
-      ) : null}
+      <fieldset>
+        <legend>Final decision <Help text={"For papers the votes did not settle. After the team has talked it through, anyone records the decision here; it overrides the votes either way, and the note and your name are kept with the paper. " + RULE} /></legend>
+        {paper.pi_decision ? (
+          <p>Recorded decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)} {ago(paper.pi_at)}{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
+        ) : (
+          <p className="where">No decision recorded. The votes decide ({explain(s)}).</p>
+        )}
+        <label className="block">Note (what the team agreed, and why)</label>
+        <textarea value={piNote} onChange={(e) => setPiNote(e.target.value)} style={{ minHeight: 60 }} placeholder="For example: discussed on Nov 3; the control group is a wait-list, which counts" />
+        <div className="row mt">
+          <button className="primary" onClick={() => decide("include")} disabled={pending}>Record: approved</button>
+          <button onClick={() => decide("exclude")} disabled={pending}>Record: rejected</button>
+          {paper.pi_decision && <button onClick={() => decide(null)} disabled={pending}>Clear the decision</button>}
+        </div>
+        {piMsg && <p className="mt"><b>{piMsg}</b></p>}
+      </fieldset>
 
       <fieldset>
         <legend>Remove this paper</legend>

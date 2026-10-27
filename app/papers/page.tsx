@@ -17,7 +17,7 @@ const FILTERS: { key: string; label: string }[] = [
   { key: "all", label: "All papers" },
   { key: "mine", label: "Need my vote" },
   { key: "needs_votes", label: "Need votes" },
-  { key: "split", label: "PI decides" },
+  { key: "split", label: "Needs a decision" },
   { key: "approved", label: "Approved" },
   { key: "todo", label: "Approved, coding not done" },
   { key: "done", label: "Coding done" },
@@ -79,7 +79,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
 
       {!lib.ready && (
         <div className="err" style={{ fontSize: 18 }}>
-          The database has not been updated for this version yet ({lib.error}). Fan: run <span className="mono">supabase/migrate_v3.sql</span> in the Supabase SQL editor.
+          The database has not been updated for this version yet ({lib.error}). Run <span className="mono">supabase/migrate_v3.sql</span> in the Supabase SQL editor.
         </div>
       )}
 
@@ -90,7 +90,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
             {" "}&middot; <Link href={keep({ f: "approved" })}>{lib.counts.approved} approved</Link>
             {" "}&middot; <Link href={keep({ f: "rejected" })}>{lib.counts.rejected} rejected</Link>
             {" "}&middot; <Link href={keep({ f: "needs_votes" })}>{lib.counts.needs_votes} need votes</Link>
-            {lib.counts.split > 0 && <> &middot; <Link href={keep({ f: "split" })}>{lib.counts.split} for the PI to decide</Link></>}
+            {lib.counts.split > 0 && <> &middot; <Link href={keep({ f: "split" })}>{lib.counts.split} need a decision</Link></>}
             {lib.mine.vote.length > 0 && <> &middot; <Link href={keep({ f: "mine" })}><b>{lib.mine.vote.length} need your vote</b></Link></>}
           </>
         )}
@@ -118,7 +118,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
       <div className="listline">
         {rows.length !== lib.total ? <span className="muted">{plural(rows.length, "paper")} match{rows.length === 1 ? "es" : ""}.</span> : <span />}
         {me.is_pi && rows.length > 0 && (
-          <span className="muted">Tick papers to remove them, then <DeleteSelectedButton /><Help text="Deletes the ticked papers with their PDF, votes, coding, and effect rows. For test uploads and duplicates. Only the PI sees this; anyone can delete a single paper from its Edit details tab." /></span>
+          <span className="muted">Tick papers to remove them, then <DeleteSelectedButton /><Help text="Deletes the ticked papers with their PDF, votes, coding, and effect rows. For test uploads and duplicates. Anyone can also delete a single paper from its Edit details tab." /></span>
         )}
       </div>
 
@@ -153,7 +153,7 @@ function PaperRow({ r, members, meId, blind, nameOf, pi }: { r: Row; members: an
   const p = r.paper;
   const s = r.standing;
   const names = r.votes.map((v) => `${nameOf(v.member_id)} ${v.decision === "include" ? "Include" : v.decision === "exclude" ? "Exclude" : "Not sure"}`);
-  const statusText = s.byPI ? (s.status === "approved" ? "Approved by PI" : "Rejected by PI")
+  const statusText = s.byPI ? (s.status === "approved" ? "Approved by decision" : "Rejected by decision")
     : s.status === "needs_votes" ? `Needs votes ${s.include + s.exclude}/${VOTES_REQUIRED}` : STATUS_LABEL[s.status];
   const authors = p.authors ? p.authors.split(";").slice(0, 3).join(";") + (p.authors.split(";").length > 3 ? "; et al." : "") : "";
   const coding = s.status !== "approved" && !r.coding && r.effects === 0

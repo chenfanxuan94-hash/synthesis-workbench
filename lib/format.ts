@@ -33,14 +33,14 @@ export function describeAction(action: string, detail: string | null): string {
     case "pdf": return "attached a PDF";
     case "details": return "edited the paper details";
     case "vote": return detail ? `voted ${detail}` : "voted";
-    case "pi_decision": return detail ? `decided: ${detail}` : "cleared the PI decision";
+    case "pi_decision": return detail ? `recorded the final decision: ${detail}` : "cleared the final decision";
     case "coding": return "saved the study features";
     case "done": return "marked the paper done";
     case "reopened": return "reopened the paper";
     case "effect_add": return detail ? `added an effect row (${detail})` : "added an effect row";
     case "effect_edit": return detail ? `edited an effect row (${detail})` : "edited an effect row";
     case "effect_delete": return detail ? `deleted an effect row (${detail})` : "deleted an effect row";
-    case "ai_draft": return detail ? `asked Claude for a draft (${detail})` : "asked Claude for a draft";
+    case "ai_draft": return detail ? `asked the AI for a draft (${detail})` : "asked the AI for a draft";
     default: return detail ? `${action}: ${detail}` : action;
   }
 }

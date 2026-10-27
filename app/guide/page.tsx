@@ -2,26 +2,21 @@ import Link from "next/link";
 import Back from "@/components/Back";
 import { markGuideRead } from "@/lib/actions";
 import { requireMember } from "@/lib/session";
-import { STEPS } from "@/lib/steps";
+import { stepByNumber } from "@/lib/steps";
 import { RULE } from "@/lib/status";
 
 export const dynamic = "force-dynamic";
 
-// Plain-language guide for new team members (step 0). Edit the text here; it is the only copy.
+// Plain-language guide for new team members. Edit the text here; it is the only copy.
 
 export default async function GuidePage() {
   await requireMember();
   return (
     <main className="center guide">
       <Back />
-      <div className="eyebrow">Step 0</div>
-      <h1>Read this first</h1>
-      <p className="lead">
-        About ten minutes. It explains the project, the words you will see, and exactly what to do at each step.
-        Come back any time you are unsure, or ask Fan.
-      </p>
+      <h1>Guide</h1>
       <p className="muted">
-        Jump to: <a href="#steps">the steps</a> &middot; <a href="#example">the worked example</a> &middot; <a href="#claude">Claude drafts</a> &middot; <a href="#words">words you will see</a> &middot; <a href="#faq">common questions</a>
+        Jump to: <a href="#steps">the steps</a> &middot; <a href="#example">the worked example</a> &middot; <a href="#ai">AI-assisted drafts</a> &middot; <a href="#words">words you will see</a> &middot; <a href="#faq">common questions</a>
       </p>
 
       <h2 id="project">The project in plain words</h2>
@@ -45,9 +40,9 @@ export default async function GuidePage() {
         <ol style={{ margin: 0, paddingLeft: 22 }}>
           <li><b>Everything lives in one list.</b> All papers shows every paper, who voted what, and who last worked on it. Nothing ever disappears; it only changes status.</li>
           <li><b>Two votes decide.</b> {RULE}</li>
-          <li><b>When in doubt, include.</b> A second person always looks too, and Fan settles anything split. Say in the note what you could not tell.</li>
+          <li><b>When in doubt, include.</b> A second person always looks too. If people disagree, the paper shows <b>Needs a decision</b>: talk it through as a team and record the decision on the paper&apos;s Edit details tab. Say in the note what you could not tell.</li>
           <li><b>Do not exclude a paper because it has no results by race or income.</b> We keep those papers and count them; that count is one of the project&apos;s findings.</li>
-          <li><b>Copy numbers exactly as printed.</b> Do not round, average, or calculate anything. The app does the math. Claude drafts are suggestions: check every number against the paper before saving.</li>
+          <li><b>Copy numbers exactly as printed.</b> Do not round, average, or calculate anything. The app does the math. AI drafts are suggestions: check every number against the paper before saving.</li>
           <li><b>Every number needs its source.</b> Record the page, the table name, and paste the sentence or table row the numbers came from.</li>
           <li><b>Coding is shared.</b> One form per paper that anyone can edit. The app records who saved last, and the History on each paper shows every change.</li>
           <li><b>When you are stuck, write a note and move on.</b> Guessing is worse than flagging.</li>
@@ -64,16 +59,16 @@ export default async function GuidePage() {
 
       <StepCard n={2}>
         <p><b>What to do:</b> Read the title and abstract (and the PDF, if there is one). Answer the seven yes/no questions in the checklist; the app suggests a vote from your answers. Pick <b>Include</b>, <b>Exclude</b> (with the first rule it fails), or <b>Not sure</b>, add a note if helpful, then click <b>Save my vote</b> and <b>Next paper</b>.</p>
-        <p style={{ marginBottom: 0 }}><b>Remember:</b> your vote is saved and the paper stays in All papers. It becomes <b>Approved</b> once two people vote Include with nobody voting Exclude. If people disagree, it shows <b>PI decides</b> and Fan records the decision. You can change your vote any time.</p>
+        <p style={{ marginBottom: 0 }}><b>Remember:</b> your vote is saved and the paper stays in All papers. It becomes <b>Approved</b> once two people vote Include with nobody voting Exclude. If people disagree, it shows <b>Needs a decision</b>; the team talks it through and anyone records the decision on the paper. You can change your vote any time.</p>
       </StepCard>
 
       <StepCard n={3}>
-        <p><b>What to do:</b> Approved papers come to you one at a time. The page opens on the <b>Code</b> tab: fill in the study features (what kind of study, who the program was for, whether it was adapted for a cultural group, who delivered it, how long it ran, who was in the sample, and how the results are reported). Then open <b>Effect sizes</b> and copy the numbers by group: either paste a screenshot of the results table and let Claude draft the rows, or add rows by hand. Check every number. When the features and the numbers are both in, click <b>Mark this paper done</b>.</p>
+        <p><b>What to do:</b> Approved papers come to you one at a time. The page opens on the <b>Code</b> tab: fill in the study features (what kind of study, who the program was for, whether it was adapted for a cultural group, who delivered it, how long it ran, who was in the sample, and how the results are reported). Then open <b>Effect sizes</b> and copy the numbers by group: either paste a screenshot of the results table and let the AI draft the rows, or add rows by hand. Check every number. When the features and the numbers are both in, click <b>Mark this paper done</b>.</p>
         <p style={{ marginBottom: 0 }}><b>Done when:</b> the paper shows <b>done</b> in All papers. Anyone can still open it and fix something later; the History shows who changed what.</p>
       </StepCard>
 
       <StepCard n={4}>
-        <p style={{ marginBottom: 0 }}><b>Usually Fan.</b> The dataset page downloads one Excel file with every effect row from the approved papers, the paper&apos;s coding attached, a Papers sheet with everyone&apos;s votes, and a codebook.</p>
+        <p style={{ marginBottom: 0 }}>The dataset page downloads one Excel file with every effect row from the approved papers, the paper&apos;s coding attached, a Papers sheet with everyone&apos;s votes, and a codebook.</p>
       </StepCard>
 
       <h2 id="example">Worked example: copying numbers (step 3)</h2>
@@ -109,11 +104,11 @@ export default async function GuidePage() {
         </div>
       </div>
 
-      <h2 id="claude">Letting Claude draft the numbers</h2>
+      <h2 id="ai">AI-assisted drafts of the numbers</h2>
       <div className="card">
-        <p>In the <b>Effect sizes</b> tab, click <b>Let Claude draft the rows</b>. Take a screenshot of the results table in the PDF (on a Mac: hold Shift, Command and 4, then drag over the table; on Windows: Windows key, Shift and S), paste it into the box with Command-V (Windows: Ctrl-V), and click <b>Draft the rows</b>. In about twenty seconds Claude lists the rows it found, with the page and the sentence it read them from.</p>
-        <p>Click <b>Use this row</b>: the form opens already filled in, with a yellow note at the top. Compare every number with the paper, fix anything wrong, and click <b>Save effect</b>. Rows saved this way are marked <b>Claude draft</b> with your name as the person who checked them.</p>
-        <p style={{ marginBottom: 0 }}>Claude only copies what is printed. It can misread a column or mix up which group is which, so the check is not optional. If the table is scanned and blurry, it will say so; type those numbers by hand. If the paper is text, you can also ask Claude to read a page range instead of a screenshot.</p>
+        <p>In the <b>Effect sizes</b> tab, click <b>Draft the rows with AI</b>. Take a screenshot of the results table in the PDF (on a Mac: hold Shift, Command and 4, then drag over the table; on Windows: Windows key, Shift and S), paste it into the box with Command-V (Windows: Ctrl-V), and click <b>Draft the rows</b>. In about twenty seconds the AI lists the rows it found, with the page and the sentence it read them from.</p>
+        <p>Click <b>Use this row</b>: the form opens already filled in, with a yellow note at the top. Compare every number with the paper, fix anything wrong, and click <b>Save effect</b>. Rows saved this way are marked <b>AI draft</b> with your name as the person who checked them.</p>
+        <p style={{ marginBottom: 0 }}>The AI only copies what is printed. It can misread a column or mix up which group is which, so the check is not optional. If the table is scanned and blurry, it will say so; type those numbers by hand. If the paper is text, you can also ask it to read a page range instead of a screenshot.</p>
       </div>
 
       <details className="fold" id="words">
@@ -129,7 +124,7 @@ export default async function GuidePage() {
           <dt>Marginalized group</dt><dd>The group facing the barrier: Black students, Latinx students, or lower-income students. Shown as <b>m</b> in the app.</dd>
           <dt>Comparison group</dt><dd>The group we compare them with: White students or higher-income students. Shown as <b>c</b>. <b>This is not the control group.</b> Control means &quot;did not get the program&quot;; comparison means &quot;the other racial or income group&quot;.</dd>
           <dt>Gap</dt><dd>The difference between the marginalized group and the comparison group on an outcome.</dd>
-          <dt>Approved, Rejected, Needs votes, PI decides</dt><dd>The status of a paper, worked out from the votes. {RULE}</dd>
+          <dt>Approved, Rejected, Needs votes, Needs a decision</dt><dd>The status of a paper, worked out from the votes. {RULE}</dd>
           <dt>Done</dt><dd>The team marked the paper&apos;s coding finished. It leaves the to-do list but can still be edited.</dd>
           <dt>n</dt><dd>Number of students in a group. Example: n = 112.</dd>
           <dt>Mean (M)</dt><dd>The average score. Example: M = 8.4.</dd>
@@ -157,11 +152,11 @@ export default async function GuidePage() {
         <summary>Common questions</summary>
         <dl>
           <dt>I voted and the paper is gone</dt><dd>It is not. Open All papers: your vote shows as a colored chip next to the paper, and the paper is approved once a second person votes Include. The Home page only lists what still needs you.</dd>
-          <dt>The PDF area is blank</dt><dd>Click <b>Open in new tab</b> above it, or switch to the Text view. If a PDF is missing, open the <b>Edit details</b> tab and upload it. Scanned papers have no text, so the Text view stays empty; read them in the PDF view and use screenshots for Claude.</dd>
-          <dt>I cannot find the full text</dt><dd>Try Google Scholar (click All versions), the university library, or the first author&apos;s website. If none work, write a note and tell Fan.</dd>
+          <dt>The PDF area is blank</dt><dd>Click <b>Open in new tab</b> above it, or switch to the Text view. If a PDF is missing, open the <b>Edit details</b> tab and upload it. Scanned papers have no text, so the Text view stays empty; read them in the PDF view and use screenshots for the AI drafts.</dd>
+          <dt>I cannot find the full text</dt><dd>Try Google Scholar (click All versions), the university library, or the first author&apos;s website. If none work, write a note on the paper so the team knows.</dd>
           <dt>I made a mistake</dt><dd>Change your vote and save it again. Coding and effect rows can be edited by anyone at any time; the History on the paper&apos;s Overview shows who changed what.</dd>
           <dt>Someone else already coded the paper</dt><dd>Good: the form is shared. Read what is there, fix anything wrong, and save. Your name is recorded as the last person to save.</dd>
-          <dt>The paper reports adjusted and unadjusted results</dt><dd>Enter the numbers from the authors&apos; main analysis, and copy the other version into Notes. Ask Fan if it is not clear which is the main one.</dd>
+          <dt>The paper reports adjusted and unadjusted results</dt><dd>Enter the numbers from the authors&apos; main analysis, and copy the other version into Notes. If it is not clear which is the main one, say so in the note.</dd>
           <dt>Several time points</dt><dd>Add one row per time point. Write &quot;post-test&quot; for the end of the program and &quot;follow-up 6 mo&quot; (and so on) for later ones.</dd>
           <dt>The groups are named differently</dt><dd>&quot;African American&quot; counts as Black, &quot;Hispanic&quot; as Latinx, and &quot;free or reduced-price lunch&quot; as lower-income. For any other contrast choose Other and type the names.</dd>
           <dt>Only one group is in the study</dt><dd>For example all Black students. Code it and mark Single-group sample: Yes. There is no gap to extract from it, so set the reporting level accordingly and mark it done.</dd>
@@ -176,7 +171,7 @@ export default async function GuidePage() {
 }
 
 function StepCard({ n, children }: { n: number; children: React.ReactNode }) {
-  const s = STEPS[n];
+  const s = stepByNumber(n);
   return (
     <div className="gstep">
       <div className="head">

@@ -41,7 +41,7 @@ export function jsonFromText(text: string): Record<string, unknown> | null {
 
 export async function callClaudeTool<T = unknown>(call: ToolCall): Promise<{ ok: true; input: T; model: string } | { ok: false; error: string }> {
   const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) return { ok: false, error: "Claude is not set up yet. Fan needs to add ANTHROPIC_API_KEY to the Vercel project settings." };
+  if (!key) return { ok: false, error: "AI drafts are not set up yet. Add ANTHROPIC_API_KEY in the Vercel project settings." };
   const name = call.tool.name;
   const body = {
     model: AI_MODEL,
@@ -60,12 +60,12 @@ export async function callClaudeTool<T = unknown>(call: ToolCall): Promise<{ ok:
     });
   } catch (e: any) {
     const timeout = e?.name === "TimeoutError" || e?.name === "AbortError";
-    return { ok: false, error: timeout ? "Claude took too long to answer. Try a smaller screenshot or fewer pages." : "Could not reach Claude: " + (e?.message || "network error") };
+    return { ok: false, error: timeout ? "The AI took too long to answer. Try a smaller screenshot or fewer pages." : "Could not reach the AI service: " + (e?.message || "network error") };
   }
   const json: any = await res.json().catch(() => null);
   if (!res.ok) {
     const msg = json?.error?.message || `HTTP ${res.status}`;
-    return { ok: false, error: "Claude returned an error: " + msg };
+    return { ok: false, error: "The AI service returned an error: " + msg };
   }
   const content: any[] = Array.isArray(json?.content) ? json.content : [];
   const block = content.find((b) => b.type === "tool_use" && b.name === name);
@@ -74,5 +74,5 @@ export async function callClaudeTool<T = unknown>(call: ToolCall): Promise<{ ok:
   const parsed = jsonFromText(text);
   if (parsed) return { ok: true, input: parsed as T, model: json.model || AI_MODEL };
   if (json?.stop_reason === "max_tokens") return { ok: false, error: "The answer was too long to finish. Try a smaller screenshot, fewer pages, or a hint naming one table." };
-  return { ok: false, error: "Claude answered without filling in the form. Try again, or give a hint about which table to read." };
+  return { ok: false, error: "The AI answered without filling in the form. Try again, or give a hint about which table to read." };
 }

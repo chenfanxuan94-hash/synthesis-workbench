@@ -119,7 +119,7 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
         <ol>
           <li>Keep the paper open in the <b>PDF</b> view on the left. Each section below says where in a paper the answers usually are.</li>
           <li>Fill in what the paper says. If the paper does not say, leave the field blank; do not guess. Hover over any <b>?</b> for a definition.</li>
-          <li>Section D says whether the paper has numbers by group. If it does, copy them in the <b>Effect sizes</b> tab (Claude can draft them from a screenshot).</li>
+          <li>Section D says whether the paper has numbers by group. If it does, copy them in the <b>Effect sizes</b> tab (the AI can draft them from a screenshot).</li>
           <li>Click <b>Save</b>. This form is shared: whoever saves last is recorded, and anyone can correct it.</li>
           <li>When the features and the numbers are both in, click <b>Mark this paper done</b>.</li>
         </ol>

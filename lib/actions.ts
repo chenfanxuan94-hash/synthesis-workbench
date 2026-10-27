@@ -166,10 +166,9 @@ export async function deleteSelected(formData: FormData) {
   redirect(back.startsWith("/papers") ? back : "/papers");
 }
 
-// The PI's decision on a paper. It overrides the votes either way; null clears it.
+// The team's final decision on a paper, recorded after talking it through. It overrides the votes either way; null clears it.
 export async function setPiDecision(paperId: string, decision: "include" | "exclude" | null, note: string): Promise<Result> {
   const me = await requireMember();
-  if (!me.is_pi) return { ok: false, error: "Only the PI can approve or reject a paper over the votes." };
   const patch = decision
     ? { pi_decision: decision, pi_note: note || null, pi_by: me.id, pi_at: new Date().toISOString(), updated_at: new Date().toISOString() }
     : { pi_decision: null, pi_note: null, pi_by: null, pi_at: null, updated_at: new Date().toISOString() };
@@ -438,7 +437,7 @@ export async function saveEffect(paperId: string, effectId: string | null, field
     row.ai_assisted = aiAssisted;
     const { error } = await d.from("effects").insert(row);
     if (error) return { ok: false, error: error.message };
-    await log(paperId, me.id, "effect_add", label + (aiAssisted ? ", from a Claude draft" : ""));
+    await log(paperId, me.id, "effect_add", label + (aiAssisted ? ", from an AI draft" : ""));
   }
   refreshPaper(paperId);
   return { ok: true };
@@ -455,9 +454,9 @@ export async function deleteEffect(paperId: string, effectId: string): Promise<R
   return { ok: true };
 }
 
-// ---------- Claude draft ----------
+// ---------- AI draft ----------
 
-// Asks Claude to read a screenshot of a results table (or pages of the paper's text) and
+// Asks the AI model to read a screenshot of a results table (or pages of the paper's text) and
 // propose effect rows. Nothing is saved: the person checks each row and saves it themselves.
 export async function draftEffects(paperId: string, input: DraftInput): Promise<DraftResult> {
   const me = await requireMember();

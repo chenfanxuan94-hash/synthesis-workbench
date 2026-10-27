@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               <div className="mb">
                 <label className="block">
                   Team code
-                  <Help text="A shared code Fan gives the team. Do not post it anywhere public." />
+                  <Help text="A shared code the team agreed on. Do not post it anywhere public." />
                 </label>
                 <input type="password" name="code" required style={{ width: "100%" }} />
               </div>

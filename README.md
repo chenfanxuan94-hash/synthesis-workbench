@@ -9,10 +9,10 @@ Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private sto
 ## How the team works in it (version 3: one master list)
 
 1. Papers enter the library by PDF upload (text extracted, DOI detected, metadata from Crossref), by DOI, by RIS or CSV import from a database export, or by hand. Duplicates are skipped by DOI then exact title. Every paper keeps its source.
-2. Everyone votes on each paper (Include, Exclude with a reason, or Not sure), with a seven-question checklist that suggests the vote. A paper is approved when two people vote Include and nobody votes Exclude, rejected when two vote Exclude and nobody votes Include; any other mix shows "PI decides" and the PI records a decision that overrides the votes. Votes are visible to everyone (set BLIND_VOTES=1 to hide others' votes until you have voted).
+2. Everyone votes on each paper (Include, Exclude with a reason, or Not sure), with a seven-question checklist that suggests the vote. A paper is approved when two people vote Include and nobody votes Exclude, rejected when two vote Exclude and nobody votes Include; any other mix shows "Needs a decision"; the team talks it through and anyone records a final decision that overrides the votes. Votes are visible to everyone (set BLIND_VOTES=1 to hide others' votes until you have voted).
 3. All papers is the master list: votes by person, status, coding progress, who last worked on each paper, and View / Edit / Code / Vote buttons. Filters by status, source, and free-text search.
 4. Coding is one shared form per paper (study features) plus effect rows, editable by anyone; the app records who last saved, and every paper has a History. The team marks a paper done when the features and the numbers are in.
-5. Effect rows can be drafted by Claude from a screenshot of the results table (or from pages of the extracted text). Claude only transcribes; the person checks every number and saves. Saved rows are flagged ai_assisted with the checker's name.
+5. Effect rows can be drafted by the AI model (Anthropic API) from a screenshot of the results table (or from pages of the extracted text). The model only transcribes; the person checks every number and saves. Saved rows are flagged ai_assisted with the checker's name.
 6. The dataset page downloads an Excel workbook (Effects, Papers, Codebook) with every effect row from the approved papers and the paper's coding attached; CSV is also available.
 
 ## Setup (once)
@@ -21,7 +21,7 @@ Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private sto
 
 1. Open your Supabase project.
 2. SQL Editor -> New query.
-3. Fresh install: paste the whole of `supabase/schema.sql` and Run. This creates the tables, enables row-level security with no policies (so the anon key can read nothing), creates the private `pdfs` bucket, and seeds three names (Fan as PI, Kim, Aaron). Edit the seed names first if needed; names can also be added from the login page.
+3. Fresh install: paste the whole of `supabase/schema.sql` and Run. This creates the tables, enables row-level security with no policies (so the anon key can read nothing), creates the private `pdfs` bucket, and seeds three names (Fan, Kim, Aaron); is_pi marks who may bulk-delete papers from the list. Edit the seed names first if needed; names can also be added from the login page.
    Upgrading from an earlier version: paste `supabase/migrate_v3.sql` instead and Run. It adds the votes and activity tables and the new columns, and carries earlier screening decisions over as votes. Safe to run more than once.
 4. Project Settings -> API: copy the Project URL and the `service_role` key.
 
@@ -59,7 +59,7 @@ git push -u origin main
 2. Environment Variables (Production):
    - `SUPABASE_URL` = the Project URL
    - `SUPABASE_SERVICE_ROLE_KEY` = the service_role key
-   - `ANTHROPIC_API_KEY` = an API key from console.anthropic.com, for Claude drafts of effect rows. Optional; without it the draft button says it is not set up.
+   - `ANTHROPIC_API_KEY` = an API key from console.anthropic.com, for AI drafts of effect rows. Optional; without it the draft button says it is not set up.
    - `ANTHROPIC_MODEL` = optional, defaults to `claude-sonnet-5-5`.
    - `TEAM_CODE` = optional. Leave unset for name-only login. If set, the login page asks for it once per browser.
    - `BLIND_VOTES` = optional. Set to `1` to hide other people's votes on a paper until you have voted.
@@ -90,7 +90,7 @@ npm run dev
 - Login is name-only by design. Anyone who has the URL can pick a name. Set `TEAM_CODE` if the URL may leak, or protect the deployment with Vercel's password protection.
 - The Supabase anon key is never shipped to the browser, and RLS is enabled with no policies, so the tables cannot be read through Supabase's public API.
 - PDFs are in a private bucket and served through one-hour signed URLs.
-- Claude receives only what the person sends: the screenshot or the selected pages of text, plus the paper's title. Nothing is stored on Anthropic's side by the app; the drafted rows live only in the browser until a person saves them.
+- The AI model receives only what the person sends: the screenshot or the selected pages of text, plus the paper's title. Nothing is stored on Anthropic's side by the app; the drafted rows live only in the browser until a person saves them.
 
 ## Effect size computation
 

@@ -27,7 +27,7 @@ export type Library = {
   counts: Record<PaperStatus, number>;
   total: number;
   waitingOthers: number;   // papers I voted on that still need another vote
-  split: number;           // papers waiting for the PI
+  split: number;           // papers waiting for a team decision
   approvedNotDone: number;
   effects: number;
   sources: string[];
