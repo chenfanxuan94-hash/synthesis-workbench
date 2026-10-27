@@ -12,7 +12,7 @@ Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private sto
 2. Everyone votes on each paper (Include, Exclude with a reason, or Not sure), with a seven-question checklist that suggests the vote. A paper is approved when two people vote Include and nobody votes Exclude, rejected when two vote Exclude and nobody votes Include; any other mix shows "Needs a decision"; the team talks it through and anyone records a final decision that overrides the votes. Votes are visible to everyone (set BLIND_VOTES=1 to hide others' votes until you have voted).
 3. All papers is the master list: votes by person, status, coding progress, who last worked on each paper, and View / Edit / Code / Vote buttons. Filters by status, source, and free-text search.
 4. Coding is one shared form per paper (study features) plus effect rows, editable by anyone; the app records who last saved, and every paper has a History. The team marks a paper done when the features and the numbers are in.
-5. Effect rows can be drafted by the AI model (Anthropic API) from a screenshot of the results table (or from pages of the extracted text). The model only transcribes; the person checks every number and saves. Saved rows are flagged ai_assisted with the checker's name.
+5. The study-features form can be filled by the AI model (Anthropic API) from the paper's text, with the sentence and page behind every value shown on hover and stored with the coding; the person checks each field. Effect rows can be drafted by the model from a screenshot of the results table (or from pages of the extracted text). The model only transcribes; the person checks every number and saves. Saved rows are flagged ai_assisted with the checker's name.
 6. The dataset page downloads an Excel workbook (Effects, Papers, Codebook) with every effect row from the approved papers and the paper's coding attached; CSV is also available.
 
 ## Setup (once)
@@ -22,7 +22,7 @@ Stack: Next.js 15 (app router, server actions), Supabase (Postgres + private sto
 1. Open your Supabase project.
 2. SQL Editor -> New query.
 3. Fresh install: paste the whole of `supabase/schema.sql` and Run. This creates the tables, enables row-level security with no policies (so the anon key can read nothing), creates the private `pdfs` bucket, and seeds three names (Fan, Kim, Aaron); is_pi marks who may bulk-delete papers from the list. Edit the seed names first if needed; names can also be added from the login page.
-   Upgrading from an earlier version: paste `supabase/migrate_v3.sql` instead and Run. It adds the votes and activity tables and the new columns, and carries earlier screening decisions over as votes. Safe to run more than once.
+   Upgrading from an earlier version: paste `supabase/migrate_v3.sql` instead and Run. It adds the votes and activity tables and the new columns, and carries earlier screening decisions over as votes. Safe to run more than once. Then paste `supabase/migrate_v3b.sql` and Run: it adds the evidence column behind the AI fill of the study-features form.
 4. Project Settings -> API: copy the Project URL and the `service_role` key.
 
 ### 2. GitHub

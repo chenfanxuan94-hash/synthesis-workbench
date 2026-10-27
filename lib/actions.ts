@@ -8,7 +8,8 @@ import { COOKIE, requireMember } from "./session";
 import { computeEffect } from "./effects";
 import { lookupDOI } from "./crossref";
 import { cleanDOI, extractDOI, firstAuthor, initialsFor, type ParsedPaper } from "./parsers";
-import { draftFromPaper, type DraftInput, type DraftResult } from "./ai";
+import { draftFromPaper, draftCodingFromPaper, type DraftInput, type DraftResult, type CodingDraftResult } from "./ai";
+import { CODING_KEYS, type EvidenceMap } from "./codingFields";
 import type { Decision } from "./types";
 
 // Every action that changes data returns one of these instead of throwing, because
@@ -363,11 +364,7 @@ export async function saveVote(paperId: string, decision: Decision, reason: stri
 // ---------- coding (one shared form per paper) ----------
 
 const CODING_NUMERIC = ["dosage_sessions", "dosage_weeks", "age_min", "age_max", "n_total", "pct_black", "pct_latinx", "pct_low_income"];
-const CODING_KEYS = [
-  "study_design", "targeting_level", "cultural_adaptation", "adaptation_depth", "delivery_agent", "dosage_sessions", "dosage_weeks",
-  "risk_of_bias", "setting", "age_min", "age_max", "n_total", "pct_black", "pct_latinx", "pct_low_income", "single_group_sample",
-  "reporting_level", "measures_validated_by_group", "notes",
-];
+const CODING_SAVE_KEYS = [...CODING_KEYS, "notes"];
 
 async function currentCoding(paperId: string): Promise<{ id: string; done: boolean } | null> {
   const { data } = await db().from("codings").select("id,done,updated_at").eq("paper_id", paperId).order("updated_at", { ascending: false }).limit(1);
@@ -375,28 +372,46 @@ async function currentCoding(paperId: string): Promise<{ id: string; done: boole
   return row ? { id: row.id, done: Boolean(row.done) } : null;
 }
 
-export async function saveCoding(paperId: string, fields: Record<string, unknown>): Promise<Result> {
+export type SaveCodingResult = { ok: true; warning?: string } | { ok: false; error: string };
+
+// Saves the shared form. `evidence` is the per-field quote and page (from the AI fill), kept so
+// anyone can hover a field later and see where the value came from.
+export async function saveCoding(paperId: string, fields: Record<string, unknown>, evidence?: EvidenceMap | null, aiAssisted?: boolean): Promise<SaveCodingResult> {
   const me = await requireMember();
   const row: Record<string, unknown> = { updated_by: me.id, updated_at: new Date().toISOString() };
-  for (const k of CODING_KEYS) {
+  for (const k of CODING_SAVE_KEYS) {
     const v = fields[k];
     if (v === undefined) continue;
     if (CODING_NUMERIC.includes(k)) row[k] = v === "" || v === null ? null : Number(v);
     else if (k === "single_group_sample") row[k] = v === "" || v === null ? null : v === true || v === "true";
     else row[k] = v === "" ? null : v;
   }
+  if (evidence !== undefined) row.evidence = evidence && Object.keys(evidence).length ? evidence : null;
+  if (aiAssisted !== undefined) row.ai_assisted = Boolean(aiAssisted);
   const d = db();
   const cur = await currentCoding(paperId);
-  if (cur) {
-    const { error } = await d.from("codings").update(row).eq("id", cur.id);
-    if (error) return { ok: false, error: error.message };
-  } else {
-    const { error } = await d.from("codings").insert({ ...row, paper_id: paperId, coder_id: me.id });
-    if (error) return { ok: false, error: error.message };
+  const write = async (r: Record<string, unknown>) =>
+    cur ? d.from("codings").update(r).eq("id", cur.id) : d.from("codings").insert({ ...r, paper_id: paperId, coder_id: me.id });
+  let { error } = await write(row);
+  let warning: string | undefined;
+  if (error && /evidence|ai_assisted/i.test(error.message)) {
+    // The database has not had migrate_v3b.sql yet: save the values, drop the evidence.
+    const { evidence: _e, ai_assisted: _a, ...rest } = row;
+    ({ error } = await write(rest));
+    if (!error) warning = "Saved, but the quotes behind the values were not kept: run supabase/migrate_v3b.sql in Supabase once.";
   }
-  await log(paperId, me.id, "coding");
+  if (error) return { ok: false, error: error.message };
+  await log(paperId, me.id, "coding", aiAssisted ? "AI-filled, checked" : null);
   refreshPaper(paperId);
-  return { ok: true };
+  return warning ? { ok: true, warning } : { ok: true };
+}
+
+// Asks the AI model to read the paper's text and propose a value plus a quote for every field.
+export async function draftCoding(paperId: string): Promise<CodingDraftResult> {
+  const me = await requireMember();
+  const r = await draftCodingFromPaper(paperId);
+  if (r.ok) await log(paperId, me.id, "ai_draft", `study features from ${r.pagesRead} page${r.pagesRead === 1 ? "" : "s"} of text`);
+  return r;
 }
 
 // Marks the paper finished (features and numbers both entered) or reopens it.

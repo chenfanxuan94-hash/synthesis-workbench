@@ -54,6 +54,7 @@ create table if not exists votes (
 
 -- Study-feature coding: one shared row per paper that anyone can edit.
 -- coder_id is who started it, updated_by who last saved it, done marks the paper finished.
+-- evidence holds, per field, the sentence and page the value came from; ai_assisted marks AI-filled forms.
 create table if not exists codings (
   id uuid primary key default gen_random_uuid(),
   paper_id uuid not null references papers(id) on delete cascade,
@@ -80,6 +81,8 @@ create table if not exists codings (
   reporting_level text,
   measures_validated_by_group text,
   notes text,
+  evidence jsonb,
+  ai_assisted boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (paper_id, coder_id)

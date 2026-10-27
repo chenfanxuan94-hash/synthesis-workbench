@@ -378,6 +378,14 @@ legend { font-weight: 800; padding: 0 12px 0 0; color: var(--maroon-dark); font-
 .help:hover .tip { display: block; }
 .help.left .tip { left: auto; right: 24px; }
 
+/* evidence mark next to an AI-filled field: hover shows the sentence it came from */
+.ev { display: inline-block; margin-left: 6px; color: var(--purple); font-size: 18px; line-height: 1; cursor: help; position: relative; vertical-align: middle; }
+.ev .tip { display: none; position: absolute; left: 0; top: 24px; z-index: 60; width: 380px; max-width: 80vw; background: #fff; color: var(--ink); border: 1px solid var(--purple); border-radius: 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16); padding: 10px 14px; font-size: 15px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; }
+.ev .tip .q { font-style: italic; margin-top: 4px; }
+.ev:hover .tip, .ev:focus .tip { display: block; }
+.aichoice { background: var(--purple-bg); border: 1px solid #cfc3ea; border-radius: 12px; padding: 12px 16px; }
+.aichoice .note { margin-top: 10px; }
+
 /* tabs */
 .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .tabs button, .tabs .btn { border-radius: 999px; padding: 7px 18px; }

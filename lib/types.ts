@@ -58,6 +58,8 @@ export type Coding = {
   reporting_level: string | null;
   measures_validated_by_group: string | null;
   notes: string | null;
+  evidence?: Record<string, { quote: string; page: number | null }> | null;
+  ai_assisted?: boolean;
   created_at: string;
   updated_at: string;
 };

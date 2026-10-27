@@ -4,46 +4,14 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Help from "./Help";
-import Instructions from "./Instructions";
-import { saveCoding, setDone } from "@/lib/actions";
-import {
-  STUDY_DESIGNS, TARGETING_LEVELS, CULTURAL_ADAPTATION, ADAPTATION_DEPTH,
-  DELIVERY_AGENTS, RISK_OF_BIAS, SETTINGS, REPORTING_LEVELS, MEASURE_VALIDATION,
-} from "@/lib/config";
-import { STATUS_LABEL } from "@/lib/status";
 import Ago from "./Ago";
+import Instructions from "./Instructions";
+import { saveCoding, setDone, draftCoding } from "@/lib/actions";
+import { CODING_FIELDS, CODING_GROUPS, CODING_KEYS, type EvidenceMap } from "@/lib/codingFields";
+import { REPORTING_LEVELS } from "@/lib/config";
+import { STATUS_LABEL } from "@/lib/status";
 import type { Task } from "@/lib/steps";
 import type { Coding, Effect, Member, Paper, Standing } from "@/lib/types";
-
-type Field = { key: keyof Coding; label: string; help: string; type: "select" | "number" | "bool"; options?: string[] };
-
-export const FIELDS: Record<string, Field> = {
-  study_design: { key: "study_design", label: "Study design", type: "select", options: STUDY_DESIGNS, help: "RCT: students were assigned by chance. Cluster RCT: whole classrooms or schools were assigned by chance. Quasi-experiment: no chance assignment, but a similar control group was used." },
-  setting: { key: "setting", label: "School level", type: "select", options: SETTINGS, help: "The grades of the students in the study. Mixed if it covers more than one level." },
-  age_min: { key: "age_min", label: "Youngest age", type: "number", help: "In years. If the paper gives grades only, leave blank and write the grades in the notes." },
-  age_max: { key: "age_max", label: "Oldest age", type: "number", help: "In years." },
-  n_total: { key: "n_total", label: "Number of students", type: "number", help: "The total number of students in the analysis (both groups together)." },
-  risk_of_bias: { key: "risk_of_bias", label: "Risk of bias", type: "select", options: RISK_OF_BIAS, help: "How much to trust the comparison. Low: assigned by chance, few students missing from the results, groups looked alike at the start. High: groups differed a lot at the start, or many students are missing. Some concerns: in between. Write why in the notes. If unsure, choose Not assessed." },
-  targeting_level: { key: "targeting_level", label: "Who the program was for", type: "select", options: TARGETING_LEVELS, help: "Universal: every student in a class or school. Selective: a group at higher risk because of who they are or where they live. Indicated: students screened and found to already have symptoms or behavior problems." },
-  cultural_adaptation: { key: "cultural_adaptation", label: "Culturally adapted?", type: "select", options: CULTURAL_ADAPTATION, help: "Yes only when the authors describe actual changes made to fit a racial, ethnic, or cultural group: language, examples, values, who delivers it, content. A general claim of being culturally sensitive, with no changes described, is No." },
-  adaptation_depth: { key: "adaptation_depth", label: "Kind of adaptation", type: "select", options: ADAPTATION_DEPTH, help: "Only if adapted. Surface: language, pictures, names, examples. Deep: values, goals, methods, or the context of the group. Both if the paper describes both." },
-  delivery_agent: { key: "delivery_agent", label: "Who delivered it", type: "select", options: DELIVERY_AGENTS, help: "The person who ran the program with the students. Clinician includes counselors, psychologists, and social workers." },
-  dosage_sessions: { key: "dosage_sessions", label: "Number of sessions", type: "number", help: "How many sessions were planned. Leave blank if not reported." },
-  dosage_weeks: { key: "dosage_weeks", label: "Length in weeks", type: "number", help: "How many weeks the program was planned to run." },
-  pct_black: { key: "pct_black", label: "% Black", type: "number", help: "Percent of the sample. Type 42 for 42 percent. Count African American as Black." },
-  pct_latinx: { key: "pct_latinx", label: "% Latinx", type: "number", help: "Percent of the sample. Count Hispanic as Latinx." },
-  pct_low_income: { key: "pct_low_income", label: "% lower-income", type: "number", help: "Percent of the sample that is lower-income, usually reported as free or reduced-price lunch." },
-  single_group_sample: { key: "single_group_sample", label: "Only one group in the study?", type: "bool", help: "Yes when (nearly) all students belong to one group, for example all Black students or all Latinx students. Then no gap can be computed within the study." },
-  reporting_level: { key: "reporting_level", label: "Reporting level", type: "select", options: REPORTING_LEVELS, help: "Pick the most detailed one found anywhere in the paper or supplement. Cells: means or counts for each group in both the program and the control group (like the worked example in the guide). Group-specific effects: an effect size for each group. Interaction: a test of whether the program worked differently by group. Composition only: just the percent of students in each group. None: not even that." },
-  measures_validated_by_group: { key: "measures_validated_by_group", label: "Measures checked for each group?", type: "select", options: MEASURE_VALIDATION, help: "Does the paper say the questionnaires or scales were tested and work the same way for each group being compared? Usually in the Measures part of the Method section. Most papers do not say; then choose No or not reported." },
-};
-
-const GROUPS: { title: string; where: string; keys: string[] }[] = [
-  { title: "A. About the study", where: "Where to look: the Method section (Design, Participants) and Table 1.", keys: ["study_design", "setting", "age_min", "age_max", "n_total", "risk_of_bias"] },
-  { title: "B. About the program", where: "Where to look: the Method section, usually a part called Intervention, Program, or Procedure.", keys: ["targeting_level", "cultural_adaptation", "adaptation_depth", "delivery_agent", "dosage_sessions", "dosage_weeks"] },
-  { title: "C. Who was in the sample", where: "Where to look: Table 1 or the Participants paragraph.", keys: ["pct_black", "pct_latinx", "pct_low_income", "single_group_sample"] },
-  { title: "D. How the results are reported (most important)", where: "Where to look: the whole Results section, every results table, and any online supplement. This answer says whether there are numbers to copy in the Effect sizes tab.", keys: ["reporting_level", "measures_validated_by_group"] },
-];
 
 export const EXTRACTABLE = REPORTING_LEVELS.slice(2);
 
@@ -89,37 +57,83 @@ export function DoneBox({ paper, coding, effects, task, members }: { paper: Pape
   );
 }
 
-export default function CodeTab({ paper, me, members, coding, effects, s, task, goEffects }: {
-  paper: Paper; me: Member; members: Member[]; coding: Coding | null; effects: Effect[]; s: Standing; task: Task | null; goEffects: () => void;
+// A small quote mark next to a field; hovering it shows the sentence and page the value came from.
+function Evidence({ e }: { e: { quote: string; page: number | null } }) {
+  return (
+    <span className="ev" tabIndex={0} aria-label={`Evidence: ${e.quote}${e.page ? ` (page ${e.page})` : ""}`}>
+      &#10077;
+      <span className="tip">
+        <b>Where this came from{e.page ? ` (page ${e.page})` : ""}</b>
+        <div className="q">&ldquo;{e.quote}&rdquo;</div>
+      </span>
+    </span>
+  );
+}
+
+export default function CodeTab({ paper, me, members, coding, effects, s, task, aiReady, goEffects }: {
+  paper: Paper; me: Member; members: Member[]; coding: Coding | null; effects: Effect[]; s: Standing; task: Task | null; aiReady: boolean; goEffects: () => void;
 }) {
   const init: Record<string, any> = {};
-  for (const k of Object.keys(FIELDS)) init[k] = coding ? (coding as any)[k] ?? "" : "";
+  for (const k of CODING_KEYS) init[k] = coding ? (coding as any)[k] ?? "" : "";
   init.notes = coding?.notes || "";
   const [v, setV] = useState<Record<string, any>>(init);
+  const [ev, setEv] = useState<EvidenceMap>((coding?.evidence as EvidenceMap) || {});
+  const [aiTouched, setAiTouched] = useState<boolean>(Boolean(coding?.ai_assisted));
+  const [overwrite, setOverwrite] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const router = useRouter();
   const set = (k: string, val: any) => setV((x) => ({ ...x, [k]: val }));
   const nameOf = (id: string | null) => members.find((m) => m.id === id)?.name || "someone";
+  const hasText = (paper.pages || []).length > 0;
+  const filled = CODING_KEYS.filter((k) => v[k] !== "" && v[k] !== null && v[k] !== undefined).length;
 
   function save() {
     setErr(""); setMsg("");
     start(async () => {
-      const r = await saveCoding(paper.id, v);
+      const r = await saveCoding(paper.id, v, ev, aiTouched);
       if (!r.ok) { setErr(r.error); return; }
-      setMsg("Saved.");
+      setMsg(r.warning ? r.warning : "Saved.");
       router.refresh();
     });
+  }
+
+  async function fillWithAI() {
+    setAiBusy(true); setAiMsg(""); setErr("");
+    try {
+      const r = await draftCoding(paper.id);
+      if (!r.ok) { setErr(r.error); return; }
+      let used = 0, skipped = 0, empty = 0;
+      const next = { ...v };
+      const nextEv: EvidenceMap = { ...ev };
+      for (const k of CODING_KEYS) {
+        const f = r.fields[k];
+        if (!f || f.value === null) { empty++; continue; }
+        const already = next[k] !== "" && next[k] !== null && next[k] !== undefined;
+        if (already && !overwrite) { skipped++; continue; }
+        next[k] = f.value;
+        if (r.evidence[k]) nextEv[k] = r.evidence[k];
+        used++;
+      }
+      setV(next); setEv(nextEv); setAiTouched(aiTouched || used > 0);
+      setAiMsg(`The AI filled ${used} ${used === 1 ? "field" : "fields"}${skipped ? `, left ${skipped} you had already filled` : ""}${empty ? `, and found nothing for ${empty}` : ""}. ${r.summary} Hover the quote mark next to a field to see the sentence it used. Check every field against the paper, then click Save.`);
+    } catch (e: any) {
+      setErr("Something went wrong: " + (e?.message || "unknown error"));
+    } finally {
+      setAiBusy(false);
+    }
   }
 
   return (
     <div className="stack">
       <Instructions id="code" title="What to do: record the study features">
         <ol>
-          <li>Keep the paper open in the <b>PDF</b> view on the left. Each section below says where in a paper the answers usually are.</li>
-          <li>Fill in what the paper says. If the paper does not say, leave the field blank; do not guess. Hover over any <b>?</b> for a definition.</li>
-          <li>Section D says whether the paper has numbers by group. If it does, copy them in the <b>Effect sizes</b> tab (the AI can draft them from a screenshot).</li>
+          <li>Fill the form by hand from the paper on the left, or click <b>Fill with AI</b> and the form is filled from the paper&apos;s text with a quote behind each value. Either way, check every field against the paper.</li>
+          <li>Each section says where in a paper the answers usually are. If the paper does not say, leave the field blank; do not guess. Hover over any <b>?</b> for a definition.</li>
+          <li>Section D says whether the paper has numbers by group. If it does, copy them in the <b>Effect sizes</b> tab.</li>
           <li>Click <b>Save</b>. This form is shared: whoever saves last is recorded, and anyone can correct it.</li>
           <li>When the features and the numbers are both in, click <b>Mark this paper done</b>.</li>
         </ol>
@@ -129,19 +143,36 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
         <div className="note warn">This paper is not approved yet ({STATUS_LABEL[s.status]}). You can still code it; only approved papers go into the dataset.</div>
       )}
       {coding && (
-        <p className="muted" style={{ margin: 0 }}>Last saved by <b>{nameOf(coding.updated_by || coding.coder_id)}</b> <Ago iso={coding.updated_at} />.</p>
+        <p className="muted" style={{ margin: 0 }}>
+          Last saved by <b>{nameOf(coding.updated_by || coding.coder_id)}</b> <Ago iso={coding.updated_at} />.{coding.ai_assisted ? <> <span className="pill ai">AI-assisted</span></> : ""}
+        </p>
       )}
 
-      {GROUPS.map((g) => (
+      <div className="aichoice">
+        <div className="row" style={{ alignItems: "center" }}>
+          <button className="primary" onClick={fillWithAI} disabled={!aiReady || !hasText || aiBusy || pending} title={!aiReady ? "AI drafts are not set up yet" : !hasText ? "This paper has no readable text" : ""}>
+            {aiBusy ? "Reading the paper... 20 to 60 seconds" : "Fill with AI from the paper's text"}
+          </button>
+          <span className="muted">or fill the form by hand below, no AI involved.</span>
+          {filled > 0 && aiReady && hasText && (
+            <label className="inline muted" style={{ marginLeft: "auto" }}><input type="checkbox" checked={overwrite} onChange={(e) => setOverwrite(e.target.checked)} disabled={aiBusy} /> let the AI overwrite fields already filled</label>
+          )}
+        </div>
+        {!aiReady && <p className="muted" style={{ margin: "6px 0 0" }}>AI drafts are not set up yet: add the <span className="mono">ANTHROPIC_API_KEY</span> in the Vercel project settings.</p>}
+        {aiReady && !hasText && <p className="muted" style={{ margin: "6px 0 0" }}>No readable text for this paper (no PDF, or a scanned one), so the AI cannot read it.</p>}
+        {aiMsg && <div className="note info" style={{ marginBottom: 0 }}>{aiMsg}</div>}
+      </div>
+
+      {CODING_GROUPS.map((g) => (
         <fieldset key={g.title}>
           <legend>{g.title}</legend>
           <p className="where">{g.where}</p>
           <div className="row">
             {g.keys.map((k) => {
-              const f = FIELDS[k];
+              const f = CODING_FIELDS[k];
               return (
                 <div key={k} style={{ minWidth: f.type === "number" ? 150 : 250 }}>
-                  <label>{f.label}<Help text={f.help} /></label>
+                  <label>{f.label}<Help text={f.help} />{ev[k] && <Evidence e={ev[k]} />}</label>
                   {f.type === "select" && (
                     <select value={v[k] ?? ""} onChange={(e) => set(k, e.target.value)}>
                       <option value="">Choose</option>
@@ -166,7 +197,7 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
       </div>
       {err && <div className="err">{err}</div>}
       <div className="row" style={{ alignItems: "center" }}>
-        <button className="primary big" onClick={save} disabled={pending}>{pending ? "Saving..." : coding ? "Save changes" : "Save"}</button>
+        <button className="primary big" onClick={save} disabled={pending || aiBusy}>{pending ? "Saving..." : coding ? "Save changes" : "Save"}</button>
         {msg && <span><b>{msg}</b></span>}
         <button className="link" onClick={goEffects}>Go to Effect sizes &rarr;</button>
       </div>

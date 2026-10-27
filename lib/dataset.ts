@@ -16,6 +16,7 @@ export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "source", label: "source", def: "How the record entered the library (seed list, database search, upload, manual)." },
   { key: "approved_by", label: "approved_by", def: "votes (two Include votes, no Exclude) or decision (a final decision recorded by the team)." },
   { key: "coding_done", label: "coding_done", def: "TRUE when the team marked the paper done. Rows from unfinished papers are included but may still change." },
+  { key: "coding_ai_assisted", label: "coding_ai_assisted", def: "TRUE when the AI filled the study-features form from the paper's text and a person checked it." },
   { key: "study_design", label: "study_design", def: "RCT, cluster RCT, quasi-experiment, other." },
   { key: "targeting_level", label: "targeting_level", def: "Universal, selective, indicated, or mixed/unclear. Moderator for Hypothesis 1." },
   { key: "cultural_adaptation", label: "cultural_adaptation", def: "Whether the program was described as culturally adapted. Moderator for Hypothesis 2." },
@@ -146,6 +147,7 @@ export async function buildDataset(): Promise<Dataset> {
     pr.decision_by = name(p.pi_by);
     pr.coding_done = c ? c.done : false;
     pr.coding_last_saved_by = c ? name(c.updated_by || c.coder_id) : null;
+    pr.coding_ai_assisted = Boolean(c?.ai_assisted);
     pr.effect_rows = effs.length;
     pr.pdf = Boolean(p.pdf_path);
     papers.push(pr);
@@ -168,6 +170,7 @@ export async function buildDataset(): Promise<Dataset> {
         else if (k === "source") row[k] = p.source ?? null;
         else if (k === "approved_by") row[k] = s.byPI ? "decision" : "votes";
         else if (k === "coding_done") row[k] = c ? c.done : false;
+        else if (k === "coding_ai_assisted") row[k] = Boolean(c?.ai_assisted);
         else if (k === "entered_by") row[k] = name(e.entered_by);
         else if (k === "last_edited_by") row[k] = name(e.updated_by || e.entered_by);
         else if (k === "ai_assisted") row[k] = Boolean(e.ai_assisted);
@@ -198,7 +201,7 @@ const PAPER_DEFS: Record<string, string> = {
   status: "needs votes, approved, rejected, split (needs a decision), approved by decision, or rejected by decision.",
   include_votes: "Number of Include votes.", exclude_votes: "Number of Exclude votes.", unsure_votes: "Number of Not sure votes.",
   final_decision: "include or exclude when the team recorded a final decision over the votes.", decision_note: "The note recorded with the decision.", decision_by: "Who recorded the decision.",
-  coding_done: "TRUE when the paper was marked done.", coding_last_saved_by: "Who last saved the study features.",
+  coding_done: "TRUE when the paper was marked done.", coding_last_saved_by: "Who last saved the study features.", coding_ai_assisted: "TRUE when the AI filled the study-features form and a person checked it.",
   effect_rows: "Number of effect rows entered.", pdf: "TRUE when a PDF is attached.",
 };
 

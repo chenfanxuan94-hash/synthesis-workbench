@@ -4,6 +4,7 @@
 import { db } from "./supabase";
 import { callClaudeTool, aiConfigured, type ClaudeBlock } from "./claude";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS } from "./config";
+import { CODING_FIELDS, CODING_KEYS, type EvidenceMap } from "./codingFields";
 
 export type DraftInput = {
   image?: { data: string; media: string } | null;   // base64 without the data: prefix
@@ -187,4 +188,100 @@ export async function draftFromPaper(paperId: string, input: DraftInput): Promis
   const candidates = list.slice(0, 40).map(normalizeCandidate);
   const summary = String(r.input?.summary || (candidates.length ? "" : "Nothing broken down by group and condition was found.")).slice(0, 1500);
   return { ok: true, candidates, summary, model: r.model, source };
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Study features: the AI reads the paper's text and proposes a value and a supporting sentence
+// for each field of the coding form. The person checks each field before saving.
+
+export type CodingDraftField = { value: string | number | boolean | null; quote: string; page: number | null };
+export type CodingDraft = { fields: Record<string, CodingDraftField>; evidence: EvidenceMap; summary: string; model: string; pagesRead: number };
+export type CodingDraftResult = { ok: true } & CodingDraft | { ok: false; error: string };
+
+const CODING_SYSTEM = `You help a research team record the design features of published studies for a meta-analysis of school-based mental health and behavior programs in the United States. You will read the extracted text of one paper, page by page, and fill in a fixed form.
+
+Rules:
+1. Fill a field only from what the paper states. If the paper does not say, leave value null. Never guess from the title or from typical practice.
+2. For each filled field, quote the exact sentence or table cell the value comes from, copied verbatim (one or two sentences at most), and give the page number from the "--- Page N ---" labels. A value without a quote is not acceptable.
+3. Choice fields must use one of the listed options exactly. Number fields are plain numbers (percent as 0 to 100, no % sign). Yes-or-no fields are true or false.
+4. Leave risk_of_bias at "Not assessed" unless randomization, attrition, and baseline equivalence are all described.
+5. Do not fill adaptation_depth unless cultural_adaptation is Yes.
+6. For reporting_level, search the whole Results section and every table for results broken down by race, ethnicity, or income, and choose the most detailed level present.
+7. In summary, say in two or three sentences what the paper is and anything the person should double-check.`;
+
+function codingTool() {
+  const props: Record<string, unknown> = {
+    summary: { type: "string" },
+  };
+  for (const k of CODING_KEYS) {
+    const f = CODING_FIELDS[k];
+    const value = f.type === "select" ? { type: ["string", "null"], enum: [...(f.options || []), null] }
+      : f.type === "number" ? { type: ["number", "null"] }
+      : { type: ["boolean", "null"] };
+    props[k] = {
+      type: "object",
+      description: `${f.label}. ${f.help} ${f.ai}`,
+      properties: { value, quote: { type: "string", description: "Verbatim sentence or table cell the value comes from; empty when the value is null." }, page: { type: ["integer", "null"] } },
+      required: ["value", "quote", "page"],
+    };
+  }
+  return {
+    name: "report_coding",
+    description: "Report the value, supporting quote, and page for every field of the study-features form.",
+    input_schema: { type: "object", properties: props, required: ["summary", ...CODING_KEYS] },
+  };
+}
+
+function normalizeField(k: string, raw: any): CodingDraftField {
+  const f = CODING_FIELDS[k];
+  let value: CodingDraftField["value"] = null;
+  const v = raw?.value;
+  if (v !== null && v !== undefined && v !== "") {
+    if (f.type === "select") {
+      const opts = f.options || [];
+      const hit = opts.find((o) => o.toLowerCase() === String(v).toLowerCase()) || opts.find((o) => o.toLowerCase().startsWith(String(v).toLowerCase().slice(0, 12)));
+      value = hit || null;
+    } else if (f.type === "number") {
+      const n = typeof v === "number" ? v : Number(String(v).replace(/[%,]/g, ""));
+      value = Number.isFinite(n) ? n : null;
+    } else {
+      value = v === true || String(v).toLowerCase() === "true" || String(v).toLowerCase() === "yes" ? true : v === false || String(v).toLowerCase() === "false" || String(v).toLowerCase() === "no" ? false : null;
+    }
+  }
+  const quote = String(raw?.quote || "").slice(0, 600);
+  const page = num(raw?.page) === null ? null : Math.round(num(raw?.page)!);
+  return { value, quote, page };
+}
+
+export async function draftCodingFromPaper(paperId: string): Promise<CodingDraftResult> {
+  if (!aiConfigured()) return { ok: false, error: "AI drafts are not set up yet. Add ANTHROPIC_API_KEY in the Vercel project settings." };
+  const { data: paper } = await db().from("papers").select("title,first_author,year,abstract,pages").eq("id", paperId).maybeSingle();
+  if (!paper) return { ok: false, error: "Paper not found." };
+  const pages: string[] = Array.isArray(paper.pages) ? paper.pages : [];
+  if (pages.length === 0) return { ok: false, error: "This paper has no readable text (no PDF, or a scanned one), so the AI cannot read it. Fill the form by hand." };
+
+  let text = "";
+  let pagesRead = 0;
+  for (let i = 0; i < pages.length; i++) {
+    const chunk = `\n--- Page ${i + 1} ---\n${pages[i]}\n`;
+    if (text.length + chunk.length > MAX_TEXT) break;
+    text += chunk;
+    pagesRead++;
+  }
+  const lines = [
+    `Paper: ${paper.title || "(untitled)"}${paper.first_author ? ` (${paper.first_author}${paper.year ? ` ${paper.year}` : ""})` : ""}.`,
+    pagesRead < pages.length ? `Only the first ${pagesRead} of ${pages.length} pages fit; later pages were left out.` : `All ${pages.length} pages follow.`,
+    text,
+  ];
+  const r = await callClaudeTool<Record<string, any>>({ system: CODING_SYSTEM, blocks: [{ type: "text", text: lines.join("\n\n") }], tool: codingTool(), maxTokens: 6000 });
+  if (!r.ok) return r;
+  const fields: Record<string, CodingDraftField> = {};
+  const evidence: EvidenceMap = {};
+  for (const k of CODING_KEYS) {
+    const f = normalizeField(k, r.input?.[k]);
+    fields[k] = f;
+    if (f.value !== null && f.quote) evidence[k] = { quote: f.quote, page: f.page };
+  }
+  return { ok: true, fields, evidence, summary: String(r.input?.summary || "").slice(0, 1200), model: r.model, pagesRead };
 }

@@ -165,7 +165,7 @@ export default function Workspace({ paper, me, members, votes, coding, effects, 
         <div className="body">
           {tab === "overview" && <OverviewTab paper={paper} me={me} members={members} votes={votes} s={s} coding={coding} effects={effects} activity={activity} blind={blind} go={setTab} />}
           {tab === "vote" && <VoteTab paper={paper} me={me} members={members} votes={votes} s={s} task={task} blind={blind} abstractLeft={abstractLeft} goEdit={() => setTab("edit")} />}
-          {tab === "code" && <CodeTab paper={paper} me={me} members={members} coding={coding} effects={effects} s={s} task={task} goEffects={() => setTab("effects")} />}
+          {tab === "code" && <CodeTab paper={paper} me={me} members={members} coding={coding} effects={effects} s={s} task={task} aiReady={aiReady} goEffects={() => setTab("effects")} />}
           {tab === "effects" && (
             <EffectsTab paper={paper} me={me} members={members} effects={effects} coding={coding} s={s} task={task} aiReady={aiReady}
               goCode={() => setTab("code")} selection={selection} clearSelection={() => setSelection(null)} showText={() => setViewer("text")} />
