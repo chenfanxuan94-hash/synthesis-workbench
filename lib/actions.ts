@@ -134,15 +134,36 @@ export async function updatePaper(id: string, fields: Partial<ParsedPaper> & { s
   return { ok: true };
 }
 
-export async function deletePaper(id: string) {
+// Removes papers and everything recorded for them (votes, coding, effect rows, history, PDF).
+export async function deletePapers(ids: string[]): Promise<{ ok: boolean; deleted: number; error?: string }> {
   await requireMember();
   const d = db();
-  const { data } = await d.from("papers").select("pdf_path").eq("id", id).maybeSingle();
-  if (data?.pdf_path) await d.storage.from(PDF_BUCKET).remove([data.pdf_path]);
-  await d.from("papers").delete().eq("id", id);
+  let deleted = 0;
+  for (const id of ids.filter((x) => typeof x === "string" && x)) {
+    const { data } = await d.from("papers").select("id,pdf_path").eq("id", id).maybeSingle();
+    if (!data) continue;
+    const { error } = await d.from("papers").delete().eq("id", id);
+    if (error) return { ok: false, deleted, error: error.message };
+    if (data.pdf_path) await d.storage.from(PDF_BUCKET).remove([data.pdf_path]);
+    deleted++;
+  }
   revalidatePath("/papers");
+  revalidatePath("/dataset");
   revalidatePath("/");
-  redirect("/papers");
+  return { ok: true, deleted };
+}
+
+export async function deletePaper(id: string): Promise<Result> {
+  const r = await deletePapers([id]);
+  return r.ok ? { ok: true } : { ok: false, error: r.error || "unknown error" };
+}
+
+// Form action for the master list: the checked papers are deleted, then the list reloads.
+export async function deleteSelected(formData: FormData) {
+  const ids = formData.getAll("ids").map(String);
+  const back = String(formData.get("back") || "/papers");
+  if (ids.length) await deletePapers(ids);
+  redirect(back.startsWith("/papers") ? back : "/papers");
 }
 
 // The PI's decision on a paper. It overrides the votes either way; null clears it.

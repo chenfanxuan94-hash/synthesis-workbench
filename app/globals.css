@@ -224,7 +224,7 @@ main.full { padding: 0; max-width: none; }
 .pill.conf-low { background: var(--red-bg); color: var(--red-ink); }
 
 /* vote chips: one per team member */
-.vchips { display: inline-flex; gap: 5px; flex-wrap: wrap; max-width: 200px; }
+.vchips { display: inline-grid; grid-template-columns: repeat(2, auto); gap: 5px; }
 .vchip {
   display: inline-flex; align-items: center; justify-content: center;
   min-width: 34px; height: 28px; padding: 0 7px;
@@ -283,6 +283,8 @@ button.small, .btn.small { padding: 4px 12px; font-size: 14px; border-radius: 8p
 button:disabled { opacity: 0.5; cursor: default; }
 button.link { border: none; padding: 0; text-decoration: underline; background: none; color: var(--maroon); border-radius: 0; }
 button.link:hover { color: var(--maroon-dark); }
+button.danger, .btn.danger { color: var(--red-ink); border-color: var(--red); background: #fff; }
+button.danger:hover, .btn.danger:hover { background: var(--red); border-color: var(--red); color: #fff; }
 
 input, select, textarea {
   font: inherit;
@@ -491,13 +493,17 @@ main.list { max-width: 1320px; }
 .summary a { color: var(--maroon-dark); }
 table.master { font-size: 15px; }
 table.master th, table.master td { padding: 10px 10px; }
-table.master td:first-child { min-width: 260px; }
+table.master td.paper { min-width: 260px; }
 table.master .paperlink { font-size: 17px; }
 table.master .sub.tiny { font-size: 13px; }
 table.master .lastcol { min-width: 130px; font-size: 15px; }
 table.master .actions { width: 160px; text-align: right; }
 table.master .actions .btn { margin: 0 0 5px 5px; }
 table.master tr.needsme td:first-child { box-shadow: inset 4px 0 0 var(--maroon); }
+table.master .tick { width: 30px; max-width: 30px; padding-left: 8px; padding-right: 0; }
+table.master .tick input { margin: 6px 0 0; width: 18px; height: 18px; }
+.listline { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px; font-size: 15px; }
+.listline button.danger { margin-left: 6px; }
 
 /* ---------- Claude draft panel ---------- */
 .aipanel, .draftbox {
@@ -571,7 +577,7 @@ details.fold > div, details.fold > table, details.fold > p { margin-bottom: 18px
 .seg2 a.on { background: var(--maroon); color: #fff; }
 
 @media (max-width: 760px) {
-  table.master td:first-child { min-width: 0; }
+  table.master td.paper { min-width: 0; }
   .brand-title { font-size: 38px; }
   .flow .what { flex-wrap: wrap; }
   .guide dl { grid-template-columns: 1fr; }

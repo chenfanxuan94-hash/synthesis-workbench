@@ -523,8 +523,12 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
     });
   }
   function remove() {
-    if (!confirm("Delete this paper and everything recorded for it? This cannot be undone.")) return;
-    start(async () => { await deletePaper(paper.id); });
+    if (!confirm(`Delete "${paper.title || "this paper"}" and everything recorded for it (votes, coding, effect rows)? This cannot be undone.`)) return;
+    start(async () => {
+      const r = await deletePaper(paper.id);
+      if (!r.ok) { setMsg("Could not delete: " + r.error); return; }
+      router.push("/papers");
+    });
   }
 
   return (
@@ -586,7 +590,11 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
         <p className="muted">PI decision: <b>{paper.pi_decision === "include" ? "approved" : "rejected"}</b> by {nameOf(paper.pi_by)}{paper.pi_note ? ` - ${paper.pi_note}` : ""}.</p>
       ) : null}
 
-      <div><button onClick={remove} disabled={pending}>Delete this paper</button></div>
+      <fieldset>
+        <legend>Remove this paper</legend>
+        <p className="where">For test uploads and duplicates. Removes the paper, its PDF, and every vote, coding, and effect row on it. Papers can also be removed from the All papers list.</p>
+        <button className="danger" onClick={remove} disabled={pending}>Delete this paper</button>
+      </fieldset>
     </div>
   );
 }

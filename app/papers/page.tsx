@@ -3,6 +3,8 @@ import Back from "@/components/Back";
 import Help from "@/components/Help";
 import PageTabs from "@/components/PageTabs";
 import VoteChips from "@/components/VoteChips";
+import { RowDelete, DeleteSelectedButton, SelectAll, BULK_FORM } from "@/components/DeleteControls";
+import { deleteSelected } from "@/lib/actions";
 import { requireMember, allMembers } from "@/lib/session";
 import { loadLibrary, type Row } from "@/lib/library";
 import { STATUS_LABEL, RULE, explain } from "@/lib/status";
@@ -113,23 +115,32 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
         {(q || f !== "all" || s || sort !== "new") && <Link href="/papers" className="muted">Clear</Link>}
       </form>
 
-      {rows.length !== lib.total && <p className="muted" style={{ margin: "0 0 10px" }}>{plural(rows.length, "paper")} match{rows.length === 1 ? "es" : ""}.</p>}
+      <div className="listline">
+        {rows.length !== lib.total ? <span className="muted">{plural(rows.length, "paper")} match{rows.length === 1 ? "es" : ""}.</span> : <span />}
+        {me.is_pi && rows.length > 0 && (
+          <span className="muted">Tick papers to remove them, then <DeleteSelectedButton /><Help text="Deletes the ticked papers with their PDF, votes, coding, and effect rows. For test uploads and duplicates. Only the PI sees this; anyone can delete a single paper from its Edit details tab." /></span>
+        )}
+      </div>
 
-      <table className="grid master">
-        <thead>
-          <tr>
-            <th>Paper</th>
-            <th>Votes</th>
-            <th>Status</th>
-            <th>Coding<Help text="Study features and effect sizes, entered on one shared form that anyone can edit. Done means the team marked the paper finished." /></th>
-            <th>Last worked on</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((r) => <PaperRow key={r.paper.id} r={r} members={members} meId={me.id} blind={blind} nameOf={nameOf} />)}
-        </tbody>
-      </table>
+      <form action={deleteSelected} id={BULK_FORM}>
+        <input type="hidden" name="back" value={keep({})} />
+        <table className="grid master">
+          <thead>
+            <tr>
+              {me.is_pi && <th className="tick"><SelectAll /></th>}
+              <th>Paper</th>
+              <th>Votes</th>
+              <th>Status</th>
+              <th>Coding<Help text="Study features and effect sizes, entered on one shared form that anyone can edit. Done means the team marked the paper finished." /></th>
+              <th>Last worked on</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => <PaperRow key={r.paper.id} r={r} members={members} meId={me.id} blind={blind} nameOf={nameOf} pi={Boolean(me.is_pi)} />)}
+          </tbody>
+        </table>
+      </form>
       {rows.length === 0 && <p className="muted mt">No papers match.</p>}
       {shown.length < rows.length && (
         <p className="muted mt">Showing the first {PAGE} of {rows.length}. <Link href={keep({ all: "1" })}>Show all {rows.length}</Link></p>
@@ -138,7 +149,7 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
   );
 }
 
-function PaperRow({ r, members, meId, blind, nameOf }: { r: Row; members: any[]; meId: string; blind: boolean; nameOf: (id: string | null | undefined) => string }) {
+function PaperRow({ r, members, meId, blind, nameOf, pi }: { r: Row; members: any[]; meId: string; blind: boolean; nameOf: (id: string | null | undefined) => string; pi: boolean }) {
   const p = r.paper;
   const s = r.standing;
   const names = r.votes.map((v) => `${nameOf(v.member_id)} ${v.decision === "include" ? "Include" : v.decision === "exclude" ? "Exclude" : "Not sure"}`);
@@ -155,7 +166,8 @@ function PaperRow({ r, members, meId, blind, nameOf }: { r: Row; members: any[];
   const href = (tab: string) => `/papers/${p.id}?tab=${tab}`;
   return (
     <tr className={r.needsMe ? "needsme" : ""}>
-      <td>
+      {pi && <td className="tick"><input type="checkbox" name="ids" value={p.id} aria-label={`Select ${p.title || "untitled"}`} /></td>}
+      <td className="paper">
         <Link href={href("overview")} className="paperlink">{p.title || "(untitled)"}</Link>
         <div className="sub">{[authors, p.journal, p.year].filter(Boolean).join(" - ")}</div>
         <div className="sub tiny">{p.source || "no source"} &middot; {p.pdf_path ? "PDF attached" : "no PDF"}</div>
@@ -171,6 +183,7 @@ function PaperRow({ r, members, meId, blind, nameOf }: { r: Row; members: any[];
         <Link className="btn small" href={href("overview")}>View</Link>
         <Link className="btn small" href={href("edit")}>Edit</Link>
         <Link className="btn small" href={href("code")}>Code</Link>
+        {pi && <RowDelete id={p.id} title={p.title || "untitled"} />}
       </td>
     </tr>
   );
