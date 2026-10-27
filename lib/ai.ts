@@ -184,9 +184,14 @@ export async function draftFromPaper(paperId: string, input: DraftInput): Promis
 
   const r = await callClaudeTool<{ summary?: string; candidates?: any[] }>({ system: SYSTEM, blocks, tool: TOOL, maxTokens: 8000 });
   if (!r.ok) return r;
-  const list = Array.isArray(r.input?.candidates) ? r.input.candidates : [];
-  const candidates = list.slice(0, 40).map(normalizeCandidate);
-  const summary = String(r.input?.summary || (candidates.length ? "" : "Nothing broken down by group and condition was found.")).slice(0, 1500);
+  const cut = r.truncated ? " The answer was cut off, so some rows may be missing; ask again with a hint naming the rest." : "";
+  let list: any = parseMaybe((r.input as any)?.candidates);
+  if (!Array.isArray(list)) {
+    const arr = Object.values(r.input || {}).map(parseMaybe).find((v) => Array.isArray(v) && v.some((x) => x && typeof x === "object"));
+    list = Array.isArray(arr) ? arr : [];
+  }
+  const candidates = (list as any[]).slice(0, 40).map((c) => normalizeCandidate(parseMaybe(c)));
+  const summary = (String((r.input as any)?.summary || (candidates.length ? "" : "Nothing broken down by group and condition was found.")) + cut).slice(0, 1500);
   return { ok: true, candidates, summary, model: r.model, source };
 }
 
@@ -203,33 +208,31 @@ const CODING_SYSTEM = `You help a research team record the design features of pu
 
 Rules:
 1. Fill a field only from what the paper states. If the paper does not say, leave value null. Never guess from the title or from typical practice.
-2. For each filled field, quote the exact sentence or table cell the value comes from, copied verbatim (one or two sentences at most), and give the page number from the "--- Page N ---" labels. A value without a quote is not acceptable.
+2. For each filled field, put in <field>_quote the exact words the value comes from, copied verbatim (at most about 30 words), and in <field>_page the page number from the "--- Page N ---" labels. A value without a quote is not acceptable.
 3. Choice fields must use one of the listed options exactly. Number fields are plain numbers (percent as 0 to 100, no % sign). Yes-or-no fields are true or false.
 4. Leave risk_of_bias at "Not assessed" unless randomization, attrition, and baseline equivalence are all described.
 5. Do not fill adaptation_depth unless cultural_adaptation is Yes.
 6. For reporting_level, search the whole Results section and every table for results broken down by race, ethnicity, or income, and choose the most detailed level present.
-7. In summary, say in two or three sentences what the paper is and anything the person should double-check.`;
+7. In summary, at most two short sentences: what the study is and what the person should double-check. Do not explain your reasoning there.`;
 
+// Flat schema: for each field three top-level properties (value, quote, page). Nested objects
+// sometimes come back from the model as JSON strings; a flat form avoids that. Summary goes last
+// so a cut-off answer loses the summary, not the fields.
 function codingTool() {
-  const props: Record<string, unknown> = {
-    summary: { type: "string" },
-  };
+  const props: Record<string, unknown> = {};
   for (const k of CODING_KEYS) {
     const f = CODING_FIELDS[k];
-    const value = f.type === "select" ? { type: ["string", "null"], enum: [...(f.options || []), null] }
-      : f.type === "number" ? { type: ["number", "null"] }
-      : { type: ["boolean", "null"] };
-    props[k] = {
-      type: "object",
-      description: `${f.label}. ${f.help} ${f.ai}`,
-      properties: { value, quote: { type: "string", description: "Verbatim sentence or table cell the value comes from; empty when the value is null." }, page: { type: ["integer", "null"] } },
-      required: ["value", "quote", "page"],
-    };
+    props[k] = f.type === "select" ? { type: ["string", "null"], enum: [...(f.options || []), null], description: `${f.label}. ${f.help} ${f.ai}` }
+      : f.type === "number" ? { type: ["number", "null"], description: `${f.label}. ${f.help} ${f.ai}` }
+      : { type: ["boolean", "null"], description: `${f.label}. ${f.help} ${f.ai}` };
+    props[k + "_quote"] = { type: "string", description: `Verbatim sentence or table cell (at most about 30 words) that supports ${k}. Empty when ${k} is null.` };
+    props[k + "_page"] = { type: ["integer", "null"], description: `Page number of that quote, from the --- Page N --- labels.` };
   }
+  props.summary = { type: "string", description: "Two short sentences at most: what the study is, and anything the person must double-check." };
   return {
     name: "report_coding",
     description: "Report the value, supporting quote, and page for every field of the study-features form.",
-    input_schema: { type: "object", properties: props, required: ["summary", ...CODING_KEYS] },
+    input_schema: { type: "object", properties: props, required: [...CODING_KEYS, "summary"] },
   };
 }
 
@@ -240,18 +243,91 @@ function normalizeField(k: string, raw: any): CodingDraftField {
   if (v !== null && v !== undefined && v !== "") {
     if (f.type === "select") {
       const opts = f.options || [];
-      const hit = opts.find((o) => o.toLowerCase() === String(v).toLowerCase()) || opts.find((o) => o.toLowerCase().startsWith(String(v).toLowerCase().slice(0, 12)));
+      const t = String(v).trim().toLowerCase();
+      const hit = opts.find((o) => o.toLowerCase() === t)
+        || opts.find((o) => o.toLowerCase().startsWith(t) && t.length >= 2)
+        || opts.find((o) => t.length >= 12 && o.toLowerCase().startsWith(t.slice(0, 12)));
       value = hit || null;
     } else if (f.type === "number") {
-      const n = typeof v === "number" ? v : Number(String(v).replace(/[%,]/g, ""));
+      const n = typeof v === "number" ? v : Number(String(v).replace(/[%,\s]/g, ""));
       value = Number.isFinite(n) ? n : null;
     } else {
-      value = v === true || String(v).toLowerCase() === "true" || String(v).toLowerCase() === "yes" ? true : v === false || String(v).toLowerCase() === "false" || String(v).toLowerCase() === "no" ? false : null;
+      const t = String(v).trim().toLowerCase();
+      value = v === true || t === "true" || t === "yes" ? true : v === false || t === "false" || t === "no" ? false : null;
     }
   }
   const quote = String(raw?.quote || "").slice(0, 600);
   const page = num(raw?.page) === null ? null : Math.round(num(raw?.page)!);
   return { value, quote, page };
+}
+
+function parseMaybe(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  const t = v.trim();
+  if (t.startsWith("{") || t.startsWith("[")) { try { return JSON.parse(t); } catch { /* not JSON */ } }
+  return v;
+}
+
+function firstOf(o: Record<string, any>, names: string[]): unknown {
+  for (const n of names) if (o[n] !== undefined) return o[n];
+  return undefined;
+}
+
+const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Finds the answer for one field in whatever shape the model used: flat (study_design plus
+// study_design_quote), nested ({value, quote, page}), a JSON string of either, wrapped in a
+// "fields" or "form" object, an array of {field, value, quote}, or keyed by the field's label.
+export function readCodingAnswer(rawInput: unknown): { fields: Record<string, CodingDraftField>; summary: string; shape: string } {
+  let input = parseMaybe(rawInput) as any;
+  if (!input || typeof input !== "object") input = {};
+  const top = input as Record<string, any>;
+  const pools: Record<string, any>[] = [top];
+  for (const w of ["fields", "form", "coding", "values", "answers", "result", "data", "study_features"]) {
+    const inner = parseMaybe(top[w]);
+    if (Array.isArray(inner)) {
+      const obj: Record<string, any> = {};
+      for (const it of inner) {
+        const item = parseMaybe(it) as any;
+        const key = item && typeof item === "object" ? firstOf(item, ["field", "key", "name", "id"]) : undefined;
+        if (typeof key === "string") obj[key] = item;
+      }
+      pools.push(obj);
+    } else if (inner && typeof inner === "object") pools.push(inner as Record<string, any>);
+  }
+  const lookup = (k: string): { raw: unknown; quote: unknown; page: unknown } | null => {
+    const label = norm(CODING_FIELDS[k].label);
+    for (const pool of pools) {
+      const keys = Object.keys(pool);
+      const hit = keys.find((x) => x === k) ?? keys.find((x) => norm(x) === norm(k)) ?? keys.find((x) => norm(x) === label);
+      if (hit !== undefined) {
+        const qk = keys.find((x) => norm(x) === norm(k + "_quote") || norm(x) === norm(k + "_evidence"));
+        const pk = keys.find((x) => norm(x) === norm(k + "_page"));
+        return { raw: pool[hit], quote: qk ? pool[qk] : undefined, page: pk ? pool[pk] : undefined };
+      }
+    }
+    return null;
+  };
+  const fields: Record<string, CodingDraftField> = {};
+  for (const k of CODING_KEYS) {
+    const found = lookup(k);
+    if (!found) { fields[k] = { value: null, quote: "", page: null }; continue; }
+    let raw = parseMaybe(found.raw) as any;
+    let quote: unknown = found.quote;
+    let page: unknown = found.page;
+    if (Array.isArray(raw)) raw = parseMaybe(raw[0]);
+    if (raw && typeof raw === "object") {
+      const o = raw as Record<string, any>;
+      const q = firstOf(o, ["quote", "evidence", "source", "text", "excerpt", "support", "supporting_quote"]);
+      if (quote === undefined) quote = q && typeof q === "object" ? firstOf(q as any, ["quote", "text"]) : q;
+      if (page === undefined) page = firstOf(o, ["page", "page_number", "pageNumber", "pg"]);
+      raw = firstOf(o, ["value", "answer", "val", "selected", "option", "choice", "result"]);
+    }
+    fields[k] = normalizeField(k, { value: raw, quote: typeof quote === "string" ? quote : "", page });
+  }
+  const sumRaw = firstOf(top, ["summary", "notes", "comment"]);
+  const shape = `keys: ${Object.keys(top).slice(0, 12).join(", ")}${Object.keys(top).length > 12 ? ", ..." : ""}`;
+  return { fields, summary: typeof sumRaw === "string" ? sumRaw : "", shape };
 }
 
 export async function draftCodingFromPaper(paperId: string): Promise<CodingDraftResult> {
@@ -274,14 +350,25 @@ export async function draftCodingFromPaper(paperId: string): Promise<CodingDraft
     pagesRead < pages.length ? `Only the first ${pagesRead} of ${pages.length} pages fit; later pages were left out.` : `All ${pages.length} pages follow.`,
     text,
   ];
-  const r = await callClaudeTool<Record<string, any>>({ system: CODING_SYSTEM, blocks: [{ type: "text", text: lines.join("\n\n") }], tool: codingTool(), maxTokens: 6000 });
+  const r = await callClaudeTool<Record<string, any>>({ system: CODING_SYSTEM, blocks: [{ type: "text", text: lines.join("\n\n") }], tool: codingTool(), maxTokens: 8000 });
   if (!r.ok) return r;
-  const fields: Record<string, CodingDraftField> = {};
+  const parsed = readCodingAnswer(r.input);
   const evidence: EvidenceMap = {};
+  let filled = 0;
   for (const k of CODING_KEYS) {
-    const f = normalizeField(k, r.input?.[k]);
-    fields[k] = f;
+    const f = parsed.fields[k];
+    if (f.value !== null) filled++;
     if (f.value !== null && f.quote) evidence[k] = { quote: f.quote, page: f.page };
   }
-  return { ok: true, fields, evidence, summary: String(r.input?.summary || "").slice(0, 1200), model: r.model, pagesRead };
+  if (filled === 0) {
+    console.log("coding draft: nothing usable", parsed.shape, "stop:", r.stop);
+    return {
+      ok: false,
+      error: r.truncated
+        ? "The AI's answer was cut off before it reached the form fields. Try again; if it keeps happening, tell the person who maintains the app."
+        : `The AI answered, but nothing in its answer matched the form fields, so nothing was filled. Try again once. If it happens again, send this line to whoever maintains the app: ${parsed.shape}; stop: ${r.stop || "none"}.`,
+    };
+  }
+  const note = r.truncated ? " The answer was cut off, so some fields may be missing; run it again to try for the rest." : "";
+  return { ok: true, fields: parsed.fields, evidence, summary: (parsed.summary + note).slice(0, 1200), model: r.model, pagesRead };
 }
