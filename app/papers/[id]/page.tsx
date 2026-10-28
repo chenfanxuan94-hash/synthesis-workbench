@@ -8,7 +8,9 @@ import { aiConfigured } from "@/lib/claude";
 import type { Activity, Coding, Effect, Paper, Vote } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// The AI reads a whole paper from this page; Opus takes a minute or two, so allow five.
+// (That is Vercel's own default with Fluid compute; see README section 4.)
+export const maxDuration = 300;
 
 const TABS: PanelTab[] = ["overview", "vote", "code", "effects", "edit"];
 

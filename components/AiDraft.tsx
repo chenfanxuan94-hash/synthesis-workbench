@@ -124,7 +124,7 @@ export default function AiDraft({ paperId, pageCount, onResult, onClose }: {
       </div>
       {err && <div className="err">{err}</div>}
       <div className="row mt" style={{ alignItems: "center" }}>
-        <button className="primary big" onClick={run} disabled={busy}>{busy ? "Reading... this takes 10 to 40 seconds" : "Draft the rows"}</button>
+        <button className="primary big" onClick={run} disabled={busy}>{busy ? "Reading... usually under a minute" : "Draft the rows"}</button>
         {busy && <span className="muted">Please keep this page open.</span>}
       </div>
     </div>

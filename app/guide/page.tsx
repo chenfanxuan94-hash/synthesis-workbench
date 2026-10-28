@@ -106,7 +106,7 @@ export default async function GuidePage() {
 
       <h2 id="ai">AI-assisted drafts of the numbers</h2>
       <div className="card">
-        <p>In the <b>Effect sizes</b> tab, click <b>Draft the rows with AI</b>. Take a screenshot of the results table in the PDF (on a Mac: hold Shift, Command and 4, then drag over the table; on Windows: Windows key, Shift and S), paste it into the box with Command-V (Windows: Ctrl-V), and click <b>Draft the rows</b>. In about twenty seconds the AI lists the rows it found, with the page and the sentence it read them from.</p>
+        <p>In the <b>Effect sizes</b> tab, click <b>Draft the rows with AI</b>. Take a screenshot of the results table in the PDF (on a Mac: hold Shift, Command and 4, then drag over the table; on Windows: Windows key, Shift and S), paste it into the box with Command-V (Windows: Ctrl-V), and click <b>Draft the rows</b>. Within a minute or so the AI lists the rows it found, with the page and the sentence it read them from.</p>
         <p>Click <b>Use this row</b>: the form opens already filled in, with a yellow note at the top. Compare every number with the paper, fix anything wrong, and click <b>Save effect</b>. Rows saved this way are marked <b>AI draft</b> with your name as the person who checked them.</p>
         <p style={{ marginBottom: 0 }}>The AI only copies what is printed. It can misread a column or mix up which group is which, so the check is not optional. If the table is scanned and blurry, it will say so; type those numbers by hand. If the paper is text, you can also ask it to read a page range instead of a screenshot.</p>
       </div>

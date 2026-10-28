@@ -60,14 +60,15 @@ git push -u origin main
    - `SUPABASE_URL` = the Project URL
    - `SUPABASE_SERVICE_ROLE_KEY` = the service_role key
    - `ANTHROPIC_API_KEY` = an API key from console.anthropic.com, for AI drafts of effect rows. Optional; without it the draft button says it is not set up.
-   - `ANTHROPIC_MODEL` = optional, defaults to `claude-sonnet-5-5`.
+   - `ANTHROPIC_MODEL` = optional, defaults to `claude-opus-5-5` (the most careful reader of tables). `claude-sonnet-5-5` is faster and about half the cost (a full-paper read is roughly 25 cents with Opus, 12 with Sonnet, at the prices listed on platform.claude.com in late 2026).
+   - `ANTHROPIC_EFFORT` = optional, defaults to `medium`. How hard the model thinks before answering: `low`, `medium`, `high`, `xhigh` or `max`. Higher is slower and costs more per paper.
    - `TEAM_CODE` = optional. Leave unset for name-only login. If set, the login page asks for it once per browser.
    - `BLIND_VOTES` = optional. Set to `1` to hide other people's votes on a paper until you have voted.
 3. Deploy. Open the URL, pick your name.
 
 ### 4. Vercel function timeout
 
-PDF text extraction runs on the server after upload. On the Pro plan the default function limit is enough for ordinary papers. If a very long PDF fails at "reading text", set Settings -> Functions -> Max Duration to 60 seconds.
+The paper page allows a function to run for 300 seconds (`maxDuration` in `app/papers/[id]/page.tsx`), because the AI reads a whole paper from there and Opus takes a minute or two. That is Vercel's default limit with Fluid compute, which is on for new projects on every plan. If a deploy fails with a message about the maximum duration, turn on Fluid compute (Settings -> Functions) or lower that number to 60. PDF text extraction runs on the server after upload and fits in the ordinary limit.
 
 ## Local development
 

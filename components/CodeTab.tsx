@@ -151,7 +151,7 @@ export default function CodeTab({ paper, me, members, coding, effects, s, task, 
       <div className="aichoice">
         <div className="row" style={{ alignItems: "center" }}>
           <button className="primary" onClick={fillWithAI} disabled={!aiReady || !hasText || aiBusy || pending} title={!aiReady ? "AI drafts are not set up yet" : !hasText ? "This paper has no readable text" : ""}>
-            {aiBusy ? "Reading the paper... 20 to 60 seconds" : "Fill with AI from the paper's text"}
+            {aiBusy ? "Reading the paper... usually one to two minutes" : "Fill with AI from the paper's text"}
           </button>
           <span className="muted">or fill the form by hand below, no AI involved.</span>
           {filled > 0 && aiReady && hasText && (
