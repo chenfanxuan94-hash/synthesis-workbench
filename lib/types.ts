@@ -1,5 +1,11 @@
 export type Member = { id: string; name: string; initials: string; is_pi?: boolean };
 
+// Where a search hit was found: one entry per database search that returned it.
+export type FoundBy = { q: string; db: string; at: string; id?: string | null };
+
+// What the AI thought of a candidate at title-and-abstract screening (a hint, never a decision).
+export type AiScreen = { verdict: "likely" | "unlikely" | "unclear"; reason: string; at: string; model?: string };
+
 export type Paper = {
   id: string;
   title: string | null;
@@ -19,6 +25,55 @@ export type Paper = {
   added_by: string | null;
   created_at: string;
   updated_at: string;
+  // Step 1 (search and screen). "search" = a candidate waiting to be screened; "master" = in the master list.
+  stage?: "search" | "master";
+  found_by?: FoundBy[] | null;
+  keywords?: string[] | null;
+  pmid?: string | null;
+  external_ids?: Record<string, string> | null;
+  cited_by?: number | null;
+  screen_decision?: "in" | "out" | null;
+  screen_by?: string | null;
+  screen_at?: string | null;
+  screened_in_at?: string | null;
+  ai_screen?: AiScreen | null;
+};
+
+// One person's title-and-abstract screening mark on a candidate.
+export type ScreenMark = "relevant" | "not_relevant" | "unsure";
+
+export type Screen = {
+  id: string;
+  paper_id: string;
+  member_id: string;
+  decision: ScreenMark;
+  reason: string | null;
+  updated_at: string;
+};
+
+export type ScreenStatus = "pending" | "in" | "out" | "split";
+
+export type ScreenStanding = {
+  status: ScreenStatus;
+  byDecision: boolean;    // a recorded decision, not the marks, decides
+  relevant: number;
+  not_relevant: number;
+  unsure: number;
+};
+
+// One database search that was run, kept for the PRISMA record.
+export type SearchRun = {
+  id: string;
+  query: string;
+  dbs: string[];
+  year_from: number | null;
+  year_to: number | null;
+  per_db: number | null;
+  run_by: string | null;
+  run_at: string;
+  results: Record<string, { found: number; pulled: number; added: number; dup: number; error: string | null }> | null;
+  pulled: number;
+  added: number;
 };
 
 export type Decision = "include" | "exclude" | "unsure";

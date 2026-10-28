@@ -41,6 +41,12 @@ export function describeAction(action: string, detail: string | null): string {
     case "effect_edit": return detail ? `edited an effect row (${detail})` : "edited an effect row";
     case "effect_delete": return detail ? `deleted an effect row (${detail})` : "deleted an effect row";
     case "ai_draft": return detail ? `asked the AI for a draft (${detail})` : "asked the AI for a draft";
+    case "search": return detail ? `ran a search: ${detail}` : "ran a search";
+    case "screen": return detail ? `screened it: ${detail}` : "screened it";
+    case "screened_in": return "moved it to the master list";
+    case "screen_decision": return detail ? `recorded the screening decision: ${detail}` : "cleared the screening decision";
+    case "back_to_search": return "sent it back to the search list";
+    case "ai_screen": return detail ? `asked the AI to pre-screen (${detail})` : "asked the AI to pre-screen";
     default: return detail ? `${action}: ${detail}` : action;
   }
 }

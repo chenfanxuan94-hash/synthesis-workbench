@@ -16,7 +16,7 @@ export default async function GuidePage() {
       <Back />
       <h1>Guide</h1>
       <p className="muted">
-        Jump to: <a href="#steps">the steps</a> &middot; <a href="#example">the worked example</a> &middot; <a href="#ai">AI-assisted drafts</a> &middot; <a href="#words">words you will see</a> &middot; <a href="#faq">common questions</a>
+        Jump to: <a href="#steps">the steps</a> &middot; <a href="#search">finding papers</a> &middot; <a href="#example">the worked example</a> &middot; <a href="#ai">AI-assisted drafts</a> &middot; <a href="#words">words you will see</a> &middot; <a href="#faq">common questions</a>
       </p>
 
       <h2 id="project">The project in plain words</h2>
@@ -38,7 +38,7 @@ export default async function GuidePage() {
       <h2 id="rules">Rules everyone follows</h2>
       <div className="card">
         <ol style={{ margin: 0, paddingLeft: 22 }}>
-          <li><b>Everything lives in one list.</b> All papers shows every paper, who voted what, and who last worked on it. Nothing ever disappears; it only changes status.</li>
+          <li><b>Two lists.</b> The <b>search list</b> (step 1) holds everything the database searches found; it is screened from the title and abstract. The <b>master list</b> (All papers) holds the papers that passed; they are voted on from the full text, then coded. Nothing is ever deleted by screening; a screened-out record stays in the search list under its own filter.</li>
           <li><b>Two votes decide.</b> {RULE}</li>
           <li><b>When in doubt, include.</b> A second person always looks too. If people disagree, the paper shows <b>Needs a decision</b>: talk it through as a team and record the decision on the paper&apos;s Edit details tab. Say in the note what you could not tell.</li>
           <li><b>Do not exclude a paper because it has no results by race or income.</b> We keep those papers and count them; that count is one of the project&apos;s findings.</li>
@@ -53,12 +53,12 @@ export default async function GuidePage() {
       <p>Home shows these steps in order. The big colored card on Home always opens the next paper waiting for you, with instructions on the screen.</p>
 
       <StepCard n={1}>
-        <p><b>What to do:</b> Drop PDF files into the big box. The app reads each file, finds its DOI (the paper&apos;s ID number), and fills in the title, authors, and year. To bring in search results from PsycINFO, ERIC, or PubMed, export them as RIS and use the <b>Import RIS or CSV</b> tab. Choose the Source under the box so we know where each paper came from.</p>
-        <p style={{ marginBottom: 0 }}><b>Done when:</b> the papers appear under All papers. The same paper added twice is skipped automatically.</p>
+        <p><b>What to do:</b> On the <b>Search &amp; screen</b> page, type keywords and click <b>Search</b>. The app asks PubMed, OpenAlex, ERIC and Semantic Scholar, pulls the titles and abstracts, merges the same paper found twice, and lists everything that is new. Then screen: click a title to read its abstract right there and mark it <b>Relevant</b>, <b>Not relevant</b> or <b>Unsure</b>. <b>Screen one by one</b> shows one candidate at a time with the keys R, N, U and S. Papers you already know go in with the <b>+ Add papers</b> button (a DOI, an RIS or CSV export, a PDF).</p>
+        <p style={{ marginBottom: 0 }}><b>Done when:</b> every candidate has a mark. One Relevant moves a paper to the master list (All papers); the full text is checked there, so when in doubt say Relevant. See <a href="#search">finding papers</a> below for how to write a good search and what the app cannot search.</p>
       </StepCard>
 
       <StepCard n={2}>
-        <p><b>What to do:</b> Read the title and abstract (and the PDF, if there is one). Answer the seven yes/no questions in the checklist; the app suggests a vote from your answers. Pick <b>Include</b>, <b>Exclude</b> (with the first rule it fails), or <b>Not sure</b>, add a note if helpful, then click <b>Save my vote</b> and <b>Next paper</b>.</p>
+        <p><b>What to do:</b> Find the PDF (the paper&apos;s DOI link, Google Scholar, the library) and drop it on the paper&apos;s <b>Edit details</b> tab. Read it, or the abstract if there is no PDF yet. Answer the seven yes/no questions in the checklist; the app suggests a vote from your answers. Pick <b>Include</b>, <b>Exclude</b> (with the first rule it fails), or <b>Not sure</b>, add a note if helpful, then click <b>Save my vote</b> and <b>Next paper</b>.</p>
         <p style={{ marginBottom: 0 }}><b>Remember:</b> your vote is saved and the paper stays in All papers. It becomes <b>Approved</b> once two people vote Include with nobody voting Exclude. If people disagree, it shows <b>Needs a decision</b>; the team talks it through and anyone records the decision on the paper. You can change your vote any time.</p>
       </StepCard>
 
@@ -68,8 +68,17 @@ export default async function GuidePage() {
       </StepCard>
 
       <StepCard n={4}>
-        <p style={{ marginBottom: 0 }}>The dataset page downloads one Excel file with every effect row from the approved papers, the paper&apos;s coding attached, a Papers sheet with everyone&apos;s votes, and a codebook.</p>
+        <p style={{ marginBottom: 0 }}>The dataset page downloads one Excel file with every effect row from the approved papers, the paper&apos;s coding attached, a Papers sheet with everyone&apos;s votes, a Search log sheet with every database search (for the PRISMA diagram), and a codebook.</p>
       </StepCard>
+
+      <h2 id="search">Finding papers (step 1)</h2>
+      <div className="card">
+        <p><b>Where the app searches.</b> PubMed (medicine and health), OpenAlex (250 million works across every field; the closest free equivalent to Google Scholar), ERIC (education research, including school programs and dissertations) and Semantic Scholar (broad, with citation counts). Each search goes to every ticked database at once; the app pulls up to the limit you chose per database, shows how many each one reported, merges the same paper found in several places, and skips anything already in the library.</p>
+        <p><b>What it cannot search, and what to do instead.</b> Google Scholar has no interface for programs and blocks them, and PsycINFO, Scopus and Web of Science need a paid licence. Use the <b>Open the same search elsewhere</b> links under the search box to run your exact query there by hand, then bring results in through <b>+ Add papers</b>: export RIS or CSV from PsycINFO or Scopus, use the free Publish or Perish program to export a Google Scholar search, or add single papers by DOI. Those records are screened like the rest and counted as added by hand in the PRISMA table.</p>
+        <p><b>Writing the query.</b> Build it from blocks joined with AND, each block a list of synonyms joined with OR, and put phrases in quotes. For example: <span className="mono">(&quot;school-based&quot; OR school OR classroom) AND (&quot;mental health&quot; OR counseling OR &quot;social emotional&quot; OR mindfulness OR behavior) AND (randomized OR &quot;control group&quot; OR &quot;quasi-experimental&quot;)</span>. Keep it broad: screening is cheap, missing a paper is not. Run several narrower searches rather than one enormous one, and set the year range if the protocol has one. Every run is kept in the search log with its counts, which is what the methods section and the PRISMA diagram need.</p>
+        <p><b>Screening.</b> Read the title and the abstract and ask one thing: could this paper possibly meet the criteria? If yes or unsure, mark <b>Relevant</b>; the Vote step reads the full text and decides properly. Mark <b>Not relevant</b> only when the abstract clearly fails a rule (another country, no comparison group, adults, not a school program, a review). <b>Unsure</b> leaves it for a teammate. One Relevant moves a paper to the master list; if one person says Relevant and another Not relevant, the candidate shows <b>Needs a decision</b> and anyone records the decision after a word with the team. A paper moved by mistake can be sent back from its Edit details tab.</p>
+        <p style={{ marginBottom: 0 }}><b>AI pre-screen.</b> Optional. The AI reads every unscreened title and abstract against the criteria written on the search page and leaves a hint: likely, unlikely or unclear, with one line of reasoning. Sort by the hint to read the likely ones first, and spot-check a sample of the unlikely ones before marking them Not relevant in bulk. The hint is never a decision and nothing moves until a person marks it; the record of who marked what is always a person&apos;s name.</p>
+      </div>
 
       <h2 id="example">Worked example: copying numbers (step 3)</h2>
       <div className="card">
@@ -151,7 +160,10 @@ export default async function GuidePage() {
       <details className="fold" id="faq">
         <summary>Common questions</summary>
         <dl>
+          <dt>I marked a candidate Relevant and it vanished from the search list</dt><dd>It moved to the master list (All papers), which is what Relevant means. Open All papers to find it; its source line says &quot;screened in&quot;. If that was a mistake, its Edit details tab has <b>Send back to the search list</b>.</dd>
           <dt>I voted and the paper is gone</dt><dd>It is not. Open All papers: your vote shows as a colored chip next to the paper, and the paper is approved once a second person votes Include. The Home page only lists what still needs you.</dd>
+          <dt>The search found thousands of records</dt><dd>The app pulls up to the limit you chose per database and says how many the database reported. Narrow the query (add a block with AND, set years) and run again; or raise the limit to 1000 and screen in bulk with the AI hints and the Not relevant button on ticked rows.</dd>
+          <dt>A paper came up with no abstract</dt><dd>Some databases do not share abstracts. Click the record links under the title (doi.org, PubMed, Google Scholar) to read it there, then mark it here.</dd>
           <dt>The PDF area is blank</dt><dd>Click <b>Open in new tab</b> above it, or switch to the Text view. If a PDF is missing, open the <b>Edit details</b> tab and upload it. Scanned papers have no text, so the Text view stays empty; read them in the PDF view and use screenshots for the AI drafts.</dd>
           <dt>I cannot find the full text</dt><dd>Try Google Scholar (click All versions), the university library, or the first author&apos;s website. If none work, write a note on the paper so the team knows.</dd>
           <dt>I made a mistake</dt><dd>Change your vote and save it again. Coding and effect rows can be edited by anyone at any time; the History on the paper&apos;s Overview shows who changed what.</dd>

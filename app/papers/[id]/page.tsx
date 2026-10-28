@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Workspace, { type PanelTab } from "@/components/Workspace";
 import { db } from "@/lib/supabase";
 import { requireMember, allMembers } from "@/lib/session";
@@ -35,6 +35,8 @@ export default async function PaperPage({
     d.from("activity").select("*").eq("paper_id", id).order("created_at", { ascending: false }).limit(60),
   ]);
   if (!paper) notFound();
+  // A candidate still in the search list is screened on its own page, not in the workspace.
+  if ((paper as Paper).stage === "search") redirect(`/search/screen?id=${id}`);
   // One shared coding per paper. If an older version left two, the latest saved (or the done one) counts.
   const cs = ((codings || []) as Coding[]);
   const coding = cs.find((c) => c.done) || cs[0] || null;

@@ -419,3 +419,85 @@ export async function draftCodingFromPaper(paperId: string): Promise<CodingDraft
   const note = r.truncated ? " The answer was cut off, so some fields may be missing; run it again to try for the rest." : "";
   return { ok: true, fields: parsed.fields, evidence, summary: (parsed.summary + note).slice(0, 1200), model: r.model, pagesRead, pagesTotal: pages.length, pagesSkipped: pick.skipped.map((i) => i + 1) };
 }
+
+// ---------------- Title-and-abstract pre-screening (step 1) ----------------
+//
+// The model reads a batch of candidates (title, year, journal, abstract) against the team's
+// written criteria and says for each whether it is likely to fit. It is a hint shown next to the
+// candidate, never a decision: people still mark every paper.
+
+export type ScreenItem = { id: string; title: string | null; year: number | null; journal: string | null; abstract: string | null };
+export type ScreenVerdict = { verdict: "likely" | "unlikely" | "unclear"; reason: string };
+export type PrescreenResult = { ok: true; verdicts: Record<string, ScreenVerdict>; model: string } | { ok: false; error: string };
+
+const SCREEN_TOOL = {
+  name: "report_screen",
+  description: "Your judgement for every numbered record: whether it is likely to meet all the criteria, judged from the title and abstract alone.",
+  input_schema: {
+    type: "object",
+    properties: {
+      items: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            n: { type: "integer", description: "The record number as given." },
+            verdict: { type: "string", enum: ["likely", "unlikely", "unclear"], description: "likely = probably meets every criterion; unlikely = clearly fails at least one; unclear = the abstract does not say enough." },
+            reason: { type: "string", description: "Under 25 words: what decided it, naming the criterion. For unlikely, name the criterion it fails." },
+          },
+          required: ["n", "verdict", "reason"],
+        },
+      },
+    },
+    required: ["items"],
+  },
+};
+
+function screenSystem(criteria: string): string {
+  return `You help a research team screen the titles and abstracts of search results for a meta-analysis. For each numbered record, judge from the title and abstract only whether the study is likely to meet ALL of the criteria below.
+
+Be generous. Title-and-abstract screening is meant to keep anything that might fit: answer "unlikely" only when the abstract clearly fails a criterion (for example a study in another country, no comparison group, adults only, not a school program, a review with no new data). When the abstract does not say, answer "unclear", not "unlikely". Reviews, commentaries, protocols without results and editorials are "unlikely".
+
+Criteria:
+${criteria.trim()}
+
+Answer for every record, in order, with one verdict and one short reason each.`;
+}
+
+export async function prescreenCandidates(items: ScreenItem[], criteria: string): Promise<PrescreenResult> {
+  if (!aiConfigured()) return { ok: false, error: "AI drafts are not set up yet. Add ANTHROPIC_API_KEY in the Vercel project settings." };
+  if (items.length === 0) return { ok: true, verdicts: {}, model: "" };
+  const lines = items.map((it, i) =>
+    `[${i + 1}] ${it.title || "(untitled)"}${it.year ? ` (${it.year})` : ""}${it.journal ? ` - ${it.journal}` : ""}\n${it.abstract ? it.abstract.slice(0, 1800) : "(no abstract available; judge from the title only, and prefer unclear)"}`
+  );
+  const r = await callClaudeTool<any>({
+    system: screenSystem(criteria),
+    blocks: [{ type: "text", text: `${items.length} records follow.\n\n${lines.join("\n\n")}` }],
+    tool: SCREEN_TOOL,
+    maxTokens: 6000,
+  });
+  if (!r.ok) return r;
+  let list: any = parseMaybe(r.input?.items ?? r.input?.records ?? r.input?.results ?? r.input);
+  if (!Array.isArray(list) && list && typeof list === "object") {
+    const arr = Object.values(list).map(parseMaybe).find((v) => Array.isArray(v));
+    list = arr || [];
+  }
+  const verdicts: Record<string, ScreenVerdict> = {};
+  if (Array.isArray(list)) {
+    list.forEach((raw: any, idx: number) => {
+      const o = parseMaybe(raw) as any;
+      if (!o || typeof o !== "object") return;
+      const n = Number(firstOf(o, ["n", "number", "record", "id", "index"]));
+      const i = Number.isFinite(n) && n >= 1 && n <= items.length ? n - 1 : idx < items.length ? idx : -1;
+      if (i < 0) return;
+      const v = String(firstOf(o, ["verdict", "decision", "judgement", "judgment", "answer"]) || "").toLowerCase();
+      const verdict: ScreenVerdict["verdict"] = /likely|yes|include|relevant|meets|fits/.test(v) && !/un|not /.test(v) ? "likely" : /unlikely|no\b|exclude|not relevant|fails/.test(v) ? "unlikely" : "unclear";
+      const reason = String(firstOf(o, ["reason", "why", "note", "explanation"]) || "").slice(0, 240);
+      verdicts[items[i].id] = { verdict, reason };
+    });
+  }
+  if (Object.keys(verdicts).length === 0) {
+    return { ok: false, error: r.truncated ? "The AI's answer was cut off. Try again with fewer records." : "The AI answered, but nothing in its answer matched the records. Try again once." };
+  }
+  return { ok: true, verdicts, model: r.model };
+}

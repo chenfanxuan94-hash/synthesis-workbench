@@ -28,7 +28,7 @@ export default async function WorkPage({
 
   if (t) {
     const id = pickNext(lib.mine[t], after);
-    if (id) redirect(`/papers/${id}?task=${t}`);
+    if (id) redirect(t === "screen" ? `/search/screen?id=${id}` : `/papers/${id}?task=${t}`);
   }
 
   const step = isTask(task) ? TASK_STEP[task] : null;
@@ -43,6 +43,8 @@ export default async function WorkPage({
         {task === "vote" && lib.split > 0 && `${plural(lib.split, "paper")} ${lib.split === 1 ? "is" : "are"} waiting for a team decision. `}
         {task === "code" && lib.counts.approved === 0 && "No paper has been approved yet; coding starts once a paper has two Include votes. "}
         {task === "code" && lib.counts.approved > 0 && "Every approved paper is marked done. "}
+        {task === "screen" && lib.screening.total === 0 && "The search list is empty: run a search or add papers on the search page. "}
+        {task === "screen" && lib.screening.total > 0 && `You have looked at every candidate that is waiting. ${lib.screening.split > 0 ? plural(lib.screening.split, "candidate") + " need a decision. " : ""}`}
         Every paper is always open from <Link href="/">the list</Link>.
       </div>
       {other.length > 0 && (
@@ -52,7 +54,7 @@ export default async function WorkPage({
             <div className="item" key={k}>
               <div className="eyebrow">Step {TASK_STEP[k].n}</div>
               <div className="t">{TASK_STEP[k].title}</div>
-              <div className="sub" style={{ marginBottom: 12 }}>{plural(lib.mine[k].length, "paper")} waiting for you</div>
+              <div className="sub" style={{ marginBottom: 12 }}>{plural(lib.mine[k].length, k === "screen" ? "candidate" : "paper")} waiting for you</div>
               <Link className="btn primary" href={TASK_STEP[k].href}>{TASK_STEP[k].go} &rarr;</Link>
             </div>
           ))}

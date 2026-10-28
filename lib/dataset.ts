@@ -4,7 +4,8 @@ import ExcelJS from "exceljs";
 import { selectAll } from "./db";
 import { standing } from "./status";
 import { allMembers } from "./session";
-import type { Coding, Effect, Member, Paper, Vote } from "./types";
+import { DB_LABEL } from "./search/dbs";
+import type { Coding, Effect, Member, Paper, SearchRun, Vote } from "./types";
 
 export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "effect_id", label: "effect_id", def: "Unique id of the effect row." },
@@ -99,18 +100,29 @@ export type Dataset = {
   papersWithRows: number;
   memberNames: string[];
   codingsOfApproved: Coding[];
+  searches: SearchLogRow[];     // every database search run in step 1, for the PRISMA record
 };
 
+export type SearchLogRow = Record<string, string | number | null>;
+
 export async function buildDataset(): Promise<Dataset> {
-  const [P, V, C, E, members] = await Promise.all([
-    selectAll<Paper>("papers", "id,title,authors,first_author,year,journal,doi,source,pdf_path,pi_decision,pi_note,pi_by,created_at", { order: "created_at" }),
+  const [P, V, C, E, S, members] = await Promise.all([
+    selectAll<Paper>("papers", "id,title,authors,first_author,year,journal,doi,source,pdf_path,pi_decision,pi_note,pi_by,created_at,found_by,screened_in_at", { order: "created_at", eq: ["stage", "master"] }),
     selectAll<Vote>("votes", "id,paper_id,member_id,decision,reason,notes,updated_at", { order: "updated_at" }),
     selectAll<Coding>("codings", "*", { order: "updated_at" }),
     selectAll<Effect>("effects", "*", { order: "created_at" }),
+    selectAll<SearchRun>("searches", "*", { order: "run_at" }),
     allMembers(),
   ]);
   const M = new Map(members.map((m) => [m.id, m.name]));
   const name = (id: string | null | undefined) => (id ? M.get(id) ?? null : null);
+  const searches: SearchLogRow[] = [];
+  for (const r of S.data) {
+    for (const d of r.dbs || []) {
+      const x = r.results?.[d];
+      searches.push({ run_at: r.run_at, run_by: name(r.run_by), query: r.query, database: DB_LABEL[d] || d, year_from: r.year_from, year_to: r.year_to, limit_per_database: r.per_db, found: x?.found ?? null, pulled: x?.pulled ?? null, new_records: x?.added ?? null, already_known: x?.dup ?? null, error: x?.error ?? null });
+    }
+  }
   const votesBy = new Map<string, Vote[]>();
   for (const v of V.data) (votesBy.get(v.paper_id) || votesBy.set(v.paper_id, []).get(v.paper_id)!).push(v);
   const codingBy = new Map<string, Coding>();
@@ -150,6 +162,9 @@ export async function buildDataset(): Promise<Dataset> {
     pr.coding_ai_assisted = Boolean(c?.ai_assisted);
     pr.effect_rows = effs.length;
     pr.pdf = Boolean(p.pdf_path);
+    const fb = Array.isArray(p.found_by) ? p.found_by : [];
+    pr.found_by = fb.length ? Array.from(new Set(fb.map((f) => `${DB_LABEL[f.db] || f.db}: ${f.q}`))).join(" | ") : null;
+    pr.screened_in_at = p.screened_in_at || null;
     papers.push(pr);
 
     if (s.status !== "approved") continue;
@@ -181,7 +196,7 @@ export async function buildDataset(): Promise<Dataset> {
       rows.push(row);
     }
   }
-  return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved };
+  return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved, searches };
 }
 
 export function toCSV(rows: DatasetRow[]): string {
@@ -203,9 +218,19 @@ const PAPER_DEFS: Record<string, string> = {
   final_decision: "include or exclude when the team recorded a final decision over the votes.", decision_note: "The note recorded with the decision.", decision_by: "Who recorded the decision.",
   coding_done: "TRUE when the paper was marked done.", coding_last_saved_by: "Who last saved the study features.", coding_ai_assisted: "TRUE when the AI filled the study-features form and a person checked it.",
   effect_rows: "Number of effect rows entered.", pdf: "TRUE when a PDF is attached.",
+  found_by: "The database searches (step 1) that returned this record, as database: query. Empty for papers added by hand.",
+  screened_in_at: "When the paper was moved from the search list to the master list at title-and-abstract screening. Empty for papers added straight to the master list.",
 };
 
-// Excel workbook: Effects (the analysis file), Papers (the whole library with votes), Codebook.
+const SEARCH_DEFS: Record<string, string> = {
+  run_at: "When the search was run.", run_by: "Who ran it.", query: "The query as typed.", database: "The database searched.",
+  year_from: "Lower year limit, if set.", year_to: "Upper year limit, if set.", limit_per_database: "Maximum records pulled from each database.",
+  found: "Records the database reported for the query.", pulled: "Records actually retrieved (found, capped at the limit).",
+  new_records: "Records added to the search list by this run (not already in the library from an earlier search or by hand).",
+  already_known: "Retrieved records already in the library.", error: "Set when the database failed to answer.",
+};
+
+// Excel workbook: Effects (the analysis file), Papers (the master list with votes), Search log (step 1), Codebook.
 export async function toXLSX(ds: Dataset): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "CHHSR Meta Analysis Portal";
@@ -222,10 +247,17 @@ export async function toXLSX(ds: Dataset): Promise<Buffer> {
   for (const r of ds.papers) wp.addRow(paperKeys.map((k) => (r[k] === undefined ? null : r[k])));
   styleHeader(wp);
 
+  const wsl = wb.addWorksheet("Search log");
+  const searchKeys = Object.keys(SEARCH_DEFS);
+  wsl.columns = searchKeys.map((k) => ({ header: k, key: k, width: k === "query" ? 60 : Math.min(24, Math.max(10, k.length + 2)) }));
+  for (const r of ds.searches) wsl.addRow(searchKeys.map((k) => (r[k] === undefined ? null : r[k])));
+  styleHeader(wsl);
+
   const wc = wb.addWorksheet("Codebook");
   wc.columns = [{ header: "sheet", key: "sheet", width: 10 }, { header: "column", key: "column", width: 30 }, { header: "definition", key: "definition", width: 110 }];
   for (const c of COLUMNS) wc.addRow(["Effects", c.label, c.def]);
   for (const k of paperKeys) wc.addRow(["Papers", k, PAPER_DEFS[k] || (k.startsWith("vote_") ? `${k.slice(5)}'s vote, with the exclusion reason in brackets.` : "")]);
+  for (const k of searchKeys) wc.addRow(["Search log", k, SEARCH_DEFS[k]]);
   styleHeader(wc);
 
   const out = await wb.xlsx.writeBuffer();

@@ -1,6 +1,6 @@
--- CHHSR Meta Analysis Portal schema (version 3: one master list)
+-- CHHSR Meta Analysis Portal schema (version 4: search list, then master list)
 -- Fresh install: run once in Supabase: SQL Editor -> New query -> paste -> Run.
--- Existing install from an earlier version: run migrate_v3.sql instead.
+-- Existing install from an earlier version: run migrate_v3.sql, migrate_v3b.sql and migrate_v4.sql instead (each is safe to repeat).
 
 create extension if not exists pgcrypto;
 
@@ -14,7 +14,9 @@ create table if not exists members (
   created_at timestamptz not null default now()
 );
 
--- One row per paper. pi_* hold the PI's decision when it overrides the votes.
+-- One row per paper. stage says whether it is still a candidate in the search list or in the
+-- master list; pi_* hold the team's final decision when it overrides the votes; screen_* hold the
+-- recorded screening decision when people disagreed at title and abstract.
 create table if not exists papers (
   id uuid primary key default gen_random_uuid(),
   title text,
@@ -32,11 +34,62 @@ create table if not exists papers (
   pi_by uuid references members(id),
   pi_at timestamptz,
   added_by uuid references members(id),
+  stage text not null default 'master' check (stage in ('search', 'master')),
+  found_by jsonb,
+  keywords jsonb,
+  pmid text,
+  external_ids jsonb,
+  cited_by int,
+  title_key text,
+  screen_decision text check (screen_decision in ('in', 'out')),
+  screen_by uuid references members(id),
+  screen_at timestamptz,
+  screened_in_at timestamptz,
+  ai_screen jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 create unique index if not exists papers_doi_idx on papers (lower(doi)) where doi is not null;
 create index if not exists papers_title_idx on papers (lower(title));
+create index if not exists papers_stage_idx on papers (stage);
+create index if not exists papers_title_key_idx on papers (title_key);
+create index if not exists papers_pmid_idx on papers (pmid);
+
+-- Title-and-abstract screening: one mark per candidate x team member.
+create table if not exists screens (
+  id uuid primary key default gen_random_uuid(),
+  paper_id uuid not null references papers(id) on delete cascade,
+  member_id uuid not null references members(id),
+  decision text not null check (decision in ('relevant', 'not_relevant', 'unsure')),
+  reason text,
+  updated_at timestamptz not null default now(),
+  unique (paper_id, member_id)
+);
+create index if not exists screens_paper_idx on screens (paper_id);
+
+-- Every database search that was run, with its counts: the PRISMA record.
+create table if not exists searches (
+  id uuid primary key default gen_random_uuid(),
+  query text not null,
+  dbs jsonb,
+  year_from int,
+  year_to int,
+  per_db int,
+  run_by uuid references members(id),
+  run_at timestamptz not null default now(),
+  results jsonb,
+  pulled int not null default 0,
+  added int not null default 0
+);
+create index if not exists searches_time_idx on searches (run_at desc);
+
+-- Small shared settings, such as the inclusion criteria the AI pre-screen checks against.
+create table if not exists settings (
+  key text primary key,
+  value text,
+  updated_by uuid references members(id),
+  updated_at timestamptz not null default now()
+);
 
 -- Votes: one per paper x member. A paper is approved when two people vote include and
 -- nobody votes exclude, rejected when two vote exclude and nobody votes include;
@@ -90,7 +143,7 @@ create table if not exists codings (
 
 -- Extracted effects: one row per paper x outcome x group contrast x timepoint.
 -- Prefixes: m_ = marginalized group, c_ = comparison group; _t_ = treatment arm, _c_ = control arm.
--- ai_assisted marks rows that Claude drafted and a person then checked and saved.
+-- ai_assisted marks rows the AI drafted and a person then checked and saved.
 create table if not exists effects (
   id uuid primary key default gen_random_uuid(),
   paper_id uuid not null references papers(id) on delete cascade,
@@ -152,6 +205,9 @@ alter table votes enable row level security;
 alter table codings enable row level security;
 alter table effects enable row level security;
 alter table activity enable row level security;
+alter table screens enable row level security;
+alter table searches enable row level security;
+alter table settings enable row level security;
 
 -- Private bucket for PDFs
 insert into storage.buckets (id, name, public)

@@ -50,3 +50,14 @@ export const TIERS: Record<string, string> = {
   subgroup: "A ready-made effect size for each group",
   interaction: "Only a treatment-by-group interaction",
 };
+
+// Default inclusion criteria for the AI pre-screen of titles and abstracts (step 1). The team can
+// edit the saved copy on the search page; this is only the starting text.
+export const DEFAULT_SCREEN_CRITERIA = `1. The study was done in the United States.
+2. The program was delivered in or through a school, college, or university (kindergarten through college), not only in a clinic or community setting.
+3. The program is about mental health, emotions, or behavior: counseling, therapy, social-emotional learning, mindfulness, behavior or discipline programs, or school mental health services. Purely academic or physical health programs do not count.
+4. The program group was compared with a control or comparison group that did not get it (randomized trial, wait-list, matched comparison, quasi-experiment). One group measured before and after does not count.
+5. Participants were students aged about 5 to 25.
+6. At least one outcome is service use or engagement (for example sessions attended, referrals, help-seeking), mental health or behavior (for example depression, anxiety, behavior ratings), or discipline and attendance (for example suspensions, absences).
+7. The paper reports its own new results (not a review, meta-analysis, commentary, or protocol).
+Note: a paper is NOT excluded for lacking results by race, ethnicity, or income; samples with Black, Latinx, or lower-income students are of special interest but are not required at this stage.`;

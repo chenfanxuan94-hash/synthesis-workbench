@@ -76,19 +76,24 @@ export default async function PapersPage({ searchParams }: { searchParams: Promi
     <main className="center wide list">
       <div className="listhead">
         <h1 className="brand">CHHSR Meta Analysis Portal</h1>
-        <AddPapersModal openByDefault={add === "1"} />
+        <div className="row" style={{ alignItems: "center", flexWrap: "nowrap" }}>
+          <Link href="/search" className={"btn big searchbtn" + (lib.ready && lib.screening.mine > 0 ? " primary" : "")}>
+            Search &amp; screen{lib.ready && lib.screening.mine > 0 ? ` (${lib.screening.mine} for you)` : lib.ready && lib.screening.total > 0 ? ` (${lib.screening.total})` : ""}
+          </Link>
+          <AddPapersModal openByDefault={add === "1"} />
+        </div>
       </div>
 
       <NextStep lib={lib} />
 
       {!lib.ready && (
         <div className="err" style={{ fontSize: 18 }}>
-          The database has not been updated for this version yet ({lib.error}). Run <span className="mono">supabase/migrate_v3.sql</span> in the Supabase SQL editor.
+          The database has not been updated for this version yet ({lib.error}). Run <span className="mono">supabase/migrate_v4.sql</span> in the Supabase SQL editor (SQL Editor, New query, paste, Run). Coming from a version before 3, run <span className="mono">migrate_v3.sql</span> first.
         </div>
       )}
 
       <p className="summary">
-        <b>{plural(lib.total, "paper")}</b> in the library
+        <b>{plural(lib.total, "paper")}</b> in the master list
         {lib.total > 0 && (
           <>
             {" "}&middot; <Link href={keep({ f: "approved" })}>{lib.counts.approved} approved</Link>
@@ -185,7 +190,7 @@ function PaperRow({ r, members, meId, blind, nameOf, pi }: { r: Row; members: an
       <td className="paper">
         <Link href={href("overview")} className="paperlink">{p.title || "(untitled)"}</Link>
         <div className="sub">{[authors, p.journal, p.year].filter(Boolean).join(" - ")}</div>
-        <div className="sub tiny">{p.source || "no source"} &middot; {p.pdf_path ? "PDF attached" : "no PDF"}</div>
+        <div className="sub tiny">{p.source || "no source"}{p.screened_in_at ? " (screened in)" : ""} &middot; {p.pdf_path ? "PDF attached" : "no PDF"}</div>
       </td>
       <td className="nowrap"><VoteChips members={members} votes={r.votes} meId={meId} blind={blind} /></td>
       <td className="nowrap"><span className={"pill " + s.status} title={explain(s, names)}>{statusText}</span></td>

@@ -10,7 +10,8 @@ import DropZone from "./DropZone";
 import CodeTab from "./CodeTab";
 import EffectsTab from "./EffectsTab";
 import type { Selection } from "./EffectForm";
-import { saveVote, setPiDecision, updatePaper, deletePaper, signedUpload, finalizeUpload, reExtractText } from "@/lib/actions";
+import { saveVote, setPiDecision, updatePaper, deletePaper, signedUpload, finalizeUpload, reExtractText, backToSearch } from "@/lib/actions";
+import { DB_LABEL } from "@/lib/search/dbs";
 import { standing, explain, needsMyVote, STATUS_LABEL, RULE } from "@/lib/status";
 import { EXCLUSION_REASONS, VOTES_REQUIRED } from "@/lib/config";
 import { TASK_STEP, type Task } from "@/lib/steps";
@@ -212,6 +213,13 @@ function OverviewTab({ paper, me, members, votes, s, coding, effects, activity, 
         <div>{explain(s, hideOthers ? [] : names)}{s.byPI && paper.pi_note ? ` Note: ${paper.pi_note}` : ""}</div>
         {mine && <div className="mt"><button className="primary" onClick={() => go("vote")}>Cast your vote &rarr;</button></div>}
       </div>
+
+      {(paper.screened_in_at || (paper.found_by && paper.found_by.length > 0)) && (
+        <p className="muted" style={{ margin: 0 }}>
+          {paper.found_by && paper.found_by.length > 0 && <>Found by {Array.from(new Set(paper.found_by.map((f) => DB_LABEL[f.db] || f.db))).join(", ")} with the search{Array.from(new Set(paper.found_by.map((f) => f.q))).length > 1 ? "es" : ""} <i>{Array.from(new Set(paper.found_by.map((f) => f.q))).join("; ")}</i>. </>}
+          {paper.screened_in_at && <>Screened in at title and abstract <Ago iso={paper.screened_in_at} />.</>}
+        </p>
+      )}
 
       <div>
         <h3 style={{ marginTop: 0 }}>Votes <Help text={RULE} /></h3>
@@ -533,6 +541,14 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
       router.refresh();
     });
   }
+  function sendBack() {
+    if (!confirm(`Send "${paper.title || "this paper"}" back to the search list? Its screening marks are cleared; votes, coding and effect rows stay with it.`)) return;
+    start(async () => {
+      const r = await backToSearch(paper.id);
+      if (!r.ok) { setMsg("Could not send it back: " + r.error); return; }
+      router.push("/search?st=all");
+    });
+  }
   function remove() {
     if (!confirm(`Delete "${paper.title || "this paper"}" and everything recorded for it (votes, coding, effect rows)? This cannot be undone.`)) return;
     start(async () => {
@@ -595,6 +611,12 @@ function EditTab({ paper, me, members, s, onAttached }: { paper: Paper; me: Memb
           {paper.pi_decision && <button onClick={() => decide(null)} disabled={pending}>Clear the decision</button>}
         </div>
         {piMsg && <p className="mt"><b>{piMsg}</b></p>}
+      </fieldset>
+
+      <fieldset>
+        <legend>Back to the search list</legend>
+        <p className="where">If this paper was moved here by mistake at title-and-abstract screening, send it back to step 1. It leaves the master list and waits to be screened again.</p>
+        <button onClick={sendBack} disabled={pending}>Send back to the search list</button>
       </fieldset>
 
       <fieldset>

@@ -38,7 +38,7 @@ export default async function DatasetPage() {
         <a className="btn" href="/api/dataset?format=csv">CSV instead</a>
       </div>
       <p className="muted mt">
-        Only <b>approved</b> papers are included: approved by the votes, or by a final decision the team recorded. The Excel file has three sheets: <b>Effects</b> (one row per extracted effect, with the paper&apos;s coding attached), <b>Papers</b> (the whole library with everyone&apos;s votes), and the <b>Codebook</b>.
+        Only <b>approved</b> papers are included: approved by the votes, or by a final decision the team recorded. The Excel file has four sheets: <b>Effects</b> (one row per extracted effect, with the paper&apos;s coding attached), <b>Papers</b> (the master list with everyone&apos;s votes), <b>Search log</b> (every database search run in step 1, for the PRISMA diagram), and the <b>Codebook</b>.
         {unfinished > 0 && <> {plural(unfinished, "approved paper")} {unfinished === 1 ? "is" : "are"} not marked done yet; {unfinished === 1 ? "its" : "their"} rows are included and flagged in the coding_done column.</>}
         <Help text="Pool delta with var_delta in a three-level model clustered on paper_id (metafor rma.mv with random = ~ 1 | paper_id / effect_id, plus cluster-robust SEs). Moderators are the coding columns. Binary rows also carry rd_delta and lnrr_delta for the absolute and relative scales." />
       </p>

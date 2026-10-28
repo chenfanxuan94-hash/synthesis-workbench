@@ -11,8 +11,12 @@ export default function NextStep({ lib }: { lib: Library }) {
   let text: React.ReactNode;
   let href: string | null = null;
   let go = "";
-  if (lib.total === 0) {
-    text = <>The library is empty. Add the first papers with the button on the right.</>;
+  const toScreen = lib.screening.mine;
+  if (toScreen > 0) {
+    text = <><b>{plural(toScreen, "candidate waits", "candidates wait")} for your screening</b> in the search list (step 1). Read the title and abstract and mark Relevant or Not relevant.</>;
+    href = "/search/screen"; go = "Screen them";
+  } else if (lib.total === 0) {
+    text = <>The master list is empty. Find papers in step 1 (<Link href="/search">Search &amp; screen</Link>), or add papers you already know with the button on the right.</>;
   } else if (toVote > 0) {
     text = <><b>{plural(toVote, "paper needs", "papers need")} your vote.</b> Read the title, abstract, or PDF and vote Include or Exclude.</>;
     href = "/work/vote"; go = "Start voting";
@@ -25,7 +29,7 @@ export default function NextStep({ lib }: { lib: Library }) {
   } else {
     text = <>
       <b>Nothing needs you right now.</b>
-      {lib.waitingOthers > 0 ? ` ${plural(lib.waitingOthers, "paper")} you voted on ${lib.waitingOthers === 1 ? "is" : "are"} waiting for a second vote from someone else.` : " Papers show up here as your teammates add them and vote."}
+      {lib.waitingOthers > 0 ? ` ${plural(lib.waitingOthers, "paper")} you voted on ${lib.waitingOthers === 1 ? "is" : "are"} waiting for a second vote from someone else.` : lib.screening.split > 0 ? ` ${plural(lib.screening.split, "candidate")} in the search list ${lib.screening.split === 1 ? "needs" : "need"} a team decision.` : " Papers show up here as your teammates find them and vote."}
     </>;
   }
 

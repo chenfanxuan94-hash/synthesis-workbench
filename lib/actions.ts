@@ -8,9 +8,15 @@ import { COOKIE, requireMember } from "./session";
 import { computeEffect } from "./effects";
 import { lookupDOI } from "./crossref";
 import { cleanDOI, extractDOI, firstAuthor, initialsFor, type ParsedPaper } from "./parsers";
-import { draftFromPaper, draftCodingFromPaper, type DraftInput, type DraftResult, type CodingDraftResult } from "./ai";
+import { draftFromPaper, draftCodingFromPaper, prescreenCandidates, type DraftInput, type DraftResult, type CodingDraftResult, type ScreenItem } from "./ai";
 import { CODING_KEYS, type EvidenceMap } from "./codingFields";
-import type { Decision } from "./types";
+import { DEFAULT_SCREEN_CRITERIA } from "./config";
+import { screenStanding, titleKey } from "./screening";
+import { runSearch, type RunSummary, MAX_PER_DB } from "./search/run";
+import { isDb, type Db } from "./search/dbs";
+import type { Decision, Screen, ScreenMark } from "./types";
+
+export type Stage = "search" | "master";
 
 // Every action that changes data returns one of these instead of throwing, because
 // Next.js replaces thrown error messages with a generic one in production.
@@ -26,6 +32,7 @@ async function log(paperId: string | null, memberId: string, action: string, det
 function refreshPaper(paperId: string) {
   revalidatePath(`/papers/${paperId}`);
   revalidatePath("/papers");
+  revalidatePath("/search");
   revalidatePath("/dataset");
   revalidatePath("/");
 }
@@ -75,13 +82,20 @@ async function findDuplicate(doi: string, title: string): Promise<string | null>
     if (data) return data.id;
   }
   if (title) {
+    const key = titleKey(title);
+    if (key.length >= 12) {
+      const { data } = await d.from("papers").select("id").eq("title_key", key).limit(1);
+      if (data && data[0]) return data[0].id;
+    }
     const { data } = await d.from("papers").select("id").ilike("title", title.trim()).maybeSingle();
     if (data) return data.id;
   }
   return null;
 }
 
-export async function createPaper(p: ParsedPaper & { source?: string }): Promise<{ id: string; duplicate: boolean }> {
+// Adds one paper. stage "master" puts it straight in the master list (the default, for papers you
+// already know); "search" puts it in the search list to be screened with the database hits.
+export async function createPaper(p: ParsedPaper & { source?: string }, stage: Stage = "master"): Promise<{ id: string; duplicate: boolean }> {
   const me = await requireMember();
   const doi = cleanDOI(p.doi);
   const dup = await findDuplicate(doi, p.title);
@@ -99,20 +113,23 @@ export async function createPaper(p: ParsedPaper & { source?: string }): Promise
       abstract: p.abstract || null,
       source,
       added_by: me.id,
+      stage: stage === "search" ? "search" : "master",
+      title_key: titleKey(p.title) || null,
     })
     .select("id")
     .single();
   if (error) throw new Error(error.message);
-  await log(data.id, me.id, "added", source);
+  await log(data.id, me.id, "added", source + (stage === "search" ? ", to the search list" : ""));
   revalidatePath("/papers");
+  revalidatePath("/search");
   revalidatePath("/");
   return { id: data.id, duplicate: false };
 }
 
-export async function importPapers(list: ParsedPaper[], source: string): Promise<{ added: number; skipped: number }> {
+export async function importPapers(list: ParsedPaper[], source: string, stage: Stage = "master"): Promise<{ added: number; skipped: number }> {
   let added = 0, skipped = 0;
   for (const p of list) {
-    const r = await createPaper({ ...p, source });
+    const r = await createPaper({ ...p, source }, stage);
     if (r.duplicate) skipped++; else added++;
   }
   return { added, skipped };
@@ -121,7 +138,7 @@ export async function importPapers(list: ParsedPaper[], source: string): Promise
 export async function updatePaper(id: string, fields: Partial<ParsedPaper> & { source?: string }): Promise<Result> {
   const me = await requireMember();
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  if (fields.title !== undefined) patch.title = fields.title || null;
+  if (fields.title !== undefined) { patch.title = fields.title || null; patch.title_key = titleKey(fields.title) || null; }
   if (fields.authors !== undefined) { patch.authors = fields.authors || null; patch.first_author = firstAuthor(fields.authors) || null; }
   if (fields.year !== undefined) patch.year = fields.year;
   if (fields.journal !== undefined) patch.journal = fields.journal || null;
@@ -149,6 +166,7 @@ export async function deletePapers(ids: string[]): Promise<{ ok: boolean; delete
     deleted++;
   }
   revalidatePath("/papers");
+  revalidatePath("/search");
   revalidatePath("/dataset");
   revalidatePath("/");
   return { ok: true, deleted };
@@ -237,7 +255,7 @@ export type UploadResult =
   | { ok: false; error: string };
 
 // Attach an uploaded PDF to an existing paper, or create a new paper from it.
-export async function finalizeUpload(path: string, filename: string, paperId?: string, source?: string): Promise<UploadResult> {
+export async function finalizeUpload(path: string, filename: string, paperId?: string, source?: string, stage: Stage = "master"): Promise<UploadResult> {
   const me = await requireMember();
   const d = db();
   let pages: string[] = [];
@@ -312,6 +330,8 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
       source: src,
       pdf_path: path,
       added_by: me.id,
+      stage: stage === "search" ? "search" : "master",
+      title_key: titleKey(meta.title) || null,
     })
     .select("id")
     .single();
@@ -323,8 +343,9 @@ export async function finalizeUpload(path: string, filename: string, paperId?: s
     const { error: e2 } = await d.from("papers").update({ pages }).eq("id", data.id);
     if (e2) console.error("saving extracted text failed", data.id, e2.message);
   }
-  await log(data.id, me.id, "added", src + ", with PDF");
+  await log(data.id, me.id, "added", src + ", with PDF" + (stage === "search" ? ", to the search list" : ""));
   revalidatePath("/papers");
+  revalidatePath("/search");
   revalidatePath("/");
   return { ok: true, id: data.id, duplicate: false, textRead };
 }
@@ -496,4 +517,178 @@ export async function draftEffects(paperId: string, input: DraftInput): Promise<
   const r = await draftFromPaper(paperId, input);
   if (r.ok) await log(paperId, me.id, "ai_draft", `${r.candidates.length} row${r.candidates.length === 1 ? "" : "s"} from ${input.image ? "a screenshot" : "the paper's text"}`);
   return r;
+}
+
+// ---------- step 1: search ----------
+
+export type SearchInput = { query: string; dbs: string[]; limit: number; yearFrom: number | null; yearTo: number | null };
+
+// Runs one query across the chosen databases and files the new hits in the search list.
+export async function runSearchAction(input: SearchInput): Promise<RunSummary> {
+  const me = await requireMember();
+  const dbs = (input.dbs || []).filter(isDb) as Db[];
+  const yf = Number(input.yearFrom); const yt = Number(input.yearTo);
+  const r = await runSearch({
+    query: String(input.query || ""),
+    dbs,
+    limit: Math.min(MAX_PER_DB, Math.max(1, Number(input.limit) || 200)),
+    yearFrom: Number.isFinite(yf) && yf > 1800 ? yf : null,
+    yearTo: Number.isFinite(yt) && yt > 1800 ? yt : null,
+  }, me.id);
+  if (r.ok) {
+    await log(null, me.id, "search", `"${r.query}" in ${dbs.join(", ")}: ${r.pulled} pulled, ${r.added} new`);
+    revalidatePath("/search");
+    revalidatePath("/");
+  }
+  return r;
+}
+
+// ---------- step 1: screening ----------
+
+async function screensFor(paperId: string): Promise<Screen[]> {
+  const { data } = await db().from("screens").select("*").eq("paper_id", paperId);
+  return (data || []) as Screen[];
+}
+
+// Moves a candidate into the master list (one Relevant mark, or a recorded decision).
+async function promote(paperId: string, memberId: string): Promise<string | null> {
+  const { error } = await db().from("papers").update({ stage: "master", screened_in_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("id", paperId);
+  if (error) return error.message;
+  await log(paperId, memberId, "screened_in");
+  return null;
+}
+
+export type ScreenResult = { ok: true; status: "pending" | "in" | "out" | "split"; moved: boolean } | { ok: false; error: string };
+
+// Saves one person's mark on a candidate and applies the rule: one Relevant (and no Not relevant)
+// moves it to the master list; decision null clears the person's mark.
+export async function saveScreen(paperId: string, decision: ScreenMark | null, reason?: string): Promise<ScreenResult> {
+  const me = await requireMember();
+  const d = db();
+  const { data: paper, error: pe } = await d.from("papers").select("id,stage,screen_decision").eq("id", paperId).maybeSingle();
+  if (pe) return { ok: false, error: pe.message };
+  if (!paper) return { ok: false, error: "This paper no longer exists." };
+  if (paper.stage !== "search") return { ok: false, error: "This paper is already in the master list." };
+  if (decision === null) {
+    const { error } = await d.from("screens").delete().eq("paper_id", paperId).eq("member_id", me.id);
+    if (error) return { ok: false, error: error.message };
+  } else {
+    const { error } = await d.from("screens").upsert(
+      { paper_id: paperId, member_id: me.id, decision, reason: reason || null, updated_at: new Date().toISOString() },
+      { onConflict: "paper_id,member_id" }
+    );
+    if (error) return { ok: false, error: error.message };
+    await log(paperId, me.id, "screen", decision === "relevant" ? "Relevant" : decision === "not_relevant" ? "Not relevant" + (reason ? ` (${reason})` : "") : "Unsure");
+  }
+  const s = screenStanding(paper, await screensFor(paperId));
+  let moved = false;
+  if (s.status === "in") {
+    const err = await promote(paperId, me.id);
+    if (err) return { ok: false, error: err };
+    moved = true;
+  }
+  revalidatePath("/search");
+  revalidatePath("/");
+  revalidatePath(`/papers/${paperId}`);
+  return { ok: true, status: s.status, moved };
+}
+
+// The same mark on several candidates at once (the ticked rows of the search list).
+export async function screenMany(ids: string[], decision: ScreenMark): Promise<{ ok: boolean; done: number; moved: number; error?: string }> {
+  let done = 0, moved = 0;
+  for (const id of ids.filter((x) => typeof x === "string" && x).slice(0, 500)) {
+    const r = await saveScreen(id, decision);
+    if (!r.ok) return { ok: false, done, moved, error: r.error };
+    done++;
+    if (r.moved) moved++;
+  }
+  return { ok: true, done, moved };
+}
+
+// A recorded screening decision, for candidates people disagree on: in = move to the master list, out = screen out, null = let the marks decide again.
+export async function setScreenDecision(paperId: string, decision: "in" | "out" | null): Promise<ScreenResult> {
+  const me = await requireMember();
+  const d = db();
+  const patch = decision
+    ? { screen_decision: decision, screen_by: me.id, screen_at: new Date().toISOString(), updated_at: new Date().toISOString() }
+    : { screen_decision: null, screen_by: null, screen_at: null, updated_at: new Date().toISOString() };
+  const { error } = await d.from("papers").update(patch).eq("id", paperId);
+  if (error) return { ok: false, error: error.message };
+  await log(paperId, me.id, "screen_decision", decision === "in" ? "moved to the master list" : decision === "out" ? "screened out" : null);
+  let moved = false;
+  if (decision === "in") {
+    const err = await promote(paperId, me.id);
+    if (err) return { ok: false, error: err };
+    moved = true;
+  }
+  const { data: paper } = await d.from("papers").select("screen_decision").eq("id", paperId).maybeSingle();
+  const s = screenStanding(paper || { screen_decision: decision }, await screensFor(paperId));
+  revalidatePath("/search");
+  revalidatePath("/");
+  revalidatePath(`/papers/${paperId}`);
+  return { ok: true, status: s.status, moved };
+}
+
+// Sends a paper from the master list back to the search list (it was moved by mistake).
+export async function backToSearch(paperId: string): Promise<Result> {
+  const me = await requireMember();
+  const d = db();
+  const { error } = await d.from("papers").update({ stage: "search", screen_decision: null, screen_by: null, screen_at: null, screened_in_at: null, updated_at: new Date().toISOString() }).eq("id", paperId);
+  if (error) return { ok: false, error: error.message };
+  await d.from("screens").delete().eq("paper_id", paperId);
+  await log(paperId, me.id, "back_to_search");
+  refreshPaper(paperId);
+  return { ok: true };
+}
+
+// ---------- step 1: AI pre-screen ----------
+
+const CRITERIA_KEY = "screen_criteria";
+
+export async function loadScreenCriteria(): Promise<string> {
+  const { data } = await db().from("settings").select("value").eq("key", CRITERIA_KEY).maybeSingle();
+  return (data?.value as string) || DEFAULT_SCREEN_CRITERIA;
+}
+
+export async function saveScreenCriteria(text: string): Promise<Result> {
+  const me = await requireMember();
+  const value = String(text || "").trim() || DEFAULT_SCREEN_CRITERIA;
+  const { error } = await db().from("settings").upsert({ key: CRITERIA_KEY, value, updated_by: me.id, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+export type PrescreenBatch = { ok: true; done: number; left: number; model: string } | { ok: false; error: string };
+
+// Asks the AI about the next batch of candidates it has not seen. The client calls this again
+// until `left` is 0, so a long list is handled in small pieces that each fit one request.
+export async function aiPrescreen(batch = 25): Promise<PrescreenBatch> {
+  const me = await requireMember();
+  const d = db();
+  const size = Math.max(1, Math.min(40, Math.floor(batch) || 25));
+  const { data, error } = await d.from("papers").select("id,title,year,journal,abstract").eq("stage", "search").is("ai_screen", null).order("created_at", { ascending: true }).limit(size);
+  if (error) return { ok: false, error: error.message };
+  const items = (data || []) as ScreenItem[];
+  if (items.length === 0) return { ok: true, done: 0, left: 0, model: "" };
+  const criteria = await loadScreenCriteria();
+  const r = await prescreenCandidates(items, criteria);
+  if (!r.ok) return r;
+  const at = new Date().toISOString();
+  for (const it of items) {
+    const v = r.verdicts[it.id] || { verdict: "unclear", reason: "The AI gave no answer for this record." };
+    await d.from("papers").update({ ai_screen: { ...v, at, model: r.model } }).eq("id", it.id);
+  }
+  await log(null, me.id, "ai_screen", `${items.length} candidates pre-screened`);
+  const { data: rest } = await d.from("papers").select("id").eq("stage", "search").is("ai_screen", null).limit(1000);
+  revalidatePath("/search");
+  return { ok: true, done: items.length, left: (rest || []).length, model: r.model };
+}
+
+// Forgets the AI's hints so a changed set of criteria can be run again.
+export async function clearAiScreen(): Promise<Result> {
+  await requireMember();
+  const { error } = await db().from("papers").update({ ai_screen: null }).eq("stage", "search");
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/search");
+  return { ok: true };
 }

@@ -2,8 +2,9 @@
 // stands and what is waiting on them. Home, the master list and the task pages read this.
 import { selectAll } from "./db";
 import { standing, needsMyVote } from "./status";
+import { screenStanding, needsMyScreen } from "./screening";
 import type { Task } from "./steps";
-import type { Paper, PaperStatus, Standing, Vote } from "./types";
+import type { Paper, PaperStatus, Screen, Standing, Vote } from "./types";
 
 export type CodingSummary = { done: boolean; updated_by: string | null; coder_id: string; updated_at: string };
 export type LastTouch = { member_id: string | null; what: string; at: string };
@@ -18,6 +19,9 @@ export type Row = {
   last: LastTouch | null;
 };
 
+// Step 1 in numbers: the candidates still in the search list.
+export type Screening = { total: number; pending: number; mine: number; split: number; out: number };
+
 export type Library = {
   ready: boolean;
   error: string | null;
@@ -31,25 +35,44 @@ export type Library = {
   approvedNotDone: number;
   effects: number;
   sources: string[];
+  screening: Screening;
 };
 
 type EffectLite = { id: string; paper_id: string; entered_by: string; updated_by: string | null; updated_at: string; created_at: string };
 
 export async function loadLibrary(memberId: string): Promise<Library> {
-  const [P, V, C, E] = await Promise.all([
-    selectAll<Paper>("papers", "id,title,authors,first_author,year,journal,doi,source,pdf_path,pi_decision,pi_note,pi_by,pi_at,added_by,created_at,updated_at", { order: "created_at", ascending: false }),
+  const [P, V, C, E, S, K] = await Promise.all([
+    selectAll<Paper>("papers", "id,title,authors,first_author,year,journal,doi,source,pdf_path,pi_decision,pi_note,pi_by,pi_at,added_by,created_at,updated_at,stage,found_by,screened_in_at", { order: "created_at", ascending: false, eq: ["stage", "master"] }),
     selectAll<Vote>("votes", "id,paper_id,member_id,decision,reason,notes,updated_at", { order: "updated_at" }),
     selectAll<CodingSummary & { paper_id: string }>("codings", "paper_id,coder_id,updated_by,done,updated_at", { order: "updated_at" }),
     selectAll<EffectLite>("effects", "id,paper_id,entered_by,updated_by,updated_at,created_at", { order: "created_at" }),
+    selectAll<{ id: string; screen_decision: "in" | "out" | null; created_at: string }>("papers", "id,screen_decision,created_at", { order: "created_at", eq: ["stage", "search"] }),
+    selectAll<Screen>("screens", "id,paper_id,member_id,decision,reason,updated_at", { order: "updated_at" }),
   ]);
 
   const empty: Library = {
-    ready: true, error: null, rows: [], byId: new Map(), mine: { vote: [], code: [] },
+    ready: true, error: null, rows: [], byId: new Map(), mine: { screen: [], vote: [], code: [] },
     counts: { needs_votes: 0, approved: 0, rejected: 0, split: 0 },
     total: 0, waitingOthers: 0, split: 0, approvedNotDone: 0, effects: 0, sources: [],
+    screening: { total: 0, pending: 0, mine: 0, split: 0, out: 0 },
   };
-  const err = V.error || P.error || C.error || E.error;
+  const err = V.error || P.error || C.error || E.error || S.error || K.error;
   if (err) return { ...empty, ready: false, error: err };
+
+  // Step 1: where the search list stands, and which candidates still wait for this person.
+  const marksBy = new Map<string, Screen[]>();
+  for (const k of K.data) (marksBy.get(k.paper_id) || marksBy.set(k.paper_id, []).get(k.paper_id)!).push(k);
+  const screening = { total: S.data.length, pending: 0, mine: 0, split: 0, out: 0 };
+  const mineScreen: string[] = [];
+  for (const c of S.data) {
+    const st = screenStanding(c, marksBy.get(c.id) || []);
+    if (st.status === "pending") screening.pending++;
+    if (st.status === "split") screening.split++;
+    if (st.status === "out") screening.out++;
+    if (needsMyScreen(st, marksBy.get(c.id) || [], memberId)) { screening.mine++; mineScreen.push(c.id); }
+  }
+  empty.screening = screening;
+  empty.mine.screen = mineScreen;
 
   const votesBy = new Map<string, Vote[]>();
   for (const v of V.data) (votesBy.get(v.paper_id) || votesBy.set(v.paper_id, []).get(v.paper_id)!).push(v);

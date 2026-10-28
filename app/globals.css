@@ -623,3 +623,74 @@ details.fold > div, details.fold > table, details.fold > p { margin-bottom: 18px
   .workspace { grid-template-columns: 1fr; height: auto; }
   .pane { min-height: 80vh; }
 }
+
+/* ---------- step 1: search and screen ---------- */
+.searchbtn { font-size: 20px; padding: 12px 22px; white-space: nowrap; }
+.searchbox { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px 20px 14px; margin: 0 0 18px; }
+.searchbox .dbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin-top: 10px; font-size: 16px; }
+.searchbox .dbs .inline { display: inline-flex; align-items: center; gap: 6px; }
+.searchbox .dbs .sep { margin: 0 2px; }
+.searchbox .dbs select, .searchbox .dbs input { padding: 4px 8px; font-size: 15px; }
+.searchbox .dblist { margin: 8px 0 0; padding-left: 20px; font-size: 16px; }
+.searchbox .dblist .bad { color: var(--red-ink); font-weight: 700; }
+.searchbox .outside a { margin-right: 14px; white-space: nowrap; }
+.aiscreen { margin: 0 0 16px; }
+.aiscreen summary .muted { font-weight: 400; margin-left: 8px; }
+.aiscreen p { margin: 10px 0 6px; font-size: 16px; }
+.aiscreen textarea { width: 100%; font-size: 15px; }
+
+table.screen td.paper { min-width: 360px; }
+table.screen td.kw { max-width: 260px; font-size: 14px; color: var(--muted); }
+table.screen td.marks { white-space: nowrap; }
+table.screen .exp { background: none; border: 0; padding: 0; text-align: left; font: inherit; color: var(--ink); cursor: pointer; display: flex; gap: 8px; align-items: flex-start; border-radius: 0; }
+table.screen .exp .tri { color: var(--maroon); flex: none; width: 14px; display: inline-block; font-size: 15px; margin-top: 3px; }
+table.screen .exp .ttl { font-weight: 700; font-size: 17px; line-height: 1.3; }
+table.screen .exp:hover .ttl { color: var(--maroon-dark); text-decoration: underline; }
+table.screen .exp.on .ttl { color: var(--maroon-dark); }
+table.screen tr.cand.open td { border-bottom: 0; }
+table.screen tr.expanded td { padding-top: 0; background: var(--page); }
+table.screen tr.cand.moved td { background: var(--green-bg); }
+table.screen .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; align-items: center; }
+.pill.src { background: var(--page); border: 1px solid var(--line); color: var(--muted); font-size: 13px; padding: 1px 8px; }
+.pill.ai-likely { background: var(--green-bg); color: var(--green-ink); font-size: 13px; padding: 1px 8px; cursor: help; }
+.pill.ai-unlikely { background: var(--red-bg); color: var(--red-ink); font-size: 13px; padding: 1px 8px; cursor: help; }
+.pill.ai-unclear { background: var(--amber-bg); color: var(--amber-ink); font-size: 13px; padding: 1px 8px; cursor: help; }
+.absbox { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; margin: 0 0 10px; }
+.absbox .abs { font-size: 16px; line-height: 1.5; margin: 0 0 8px; }
+.absbox .sub { margin: 4px 0; }
+.absbox .fb { display: inline-block; margin-right: 12px; }
+.reclinks a { margin-right: 10px; white-space: nowrap; }
+.mkbtns { display: flex; gap: 5px; flex-wrap: nowrap; }
+.mkbtns button { padding: 5px 10px; font-size: 14px; white-space: nowrap; border-radius: 8px; }
+.mkbtns button.on.yes { background: var(--green); border-color: var(--green); color: #fff; }
+.mkbtns button.on.no { background: var(--red); border-color: var(--red); color: #fff; }
+.mkbtns button.on.maybe { background: var(--amber); border-color: var(--amber); color: #fff; }
+.err.tiny { font-size: 13px; padding: 4px 8px; margin: 4px 0 0; }
+.listline .bulk button.small { padding: 4px 10px; font-size: 14px; }
+.toasts { position: sticky; top: 8px; z-index: 40; margin: 0 0 10px; }
+.toast { display: flex; align-items: center; gap: 12px; background: var(--green-bg); color: var(--green-ink); border: 1px solid #bfdcc5; border-radius: 12px; padding: 8px 14px; margin-bottom: 6px; font-size: 15px; }
+.toast span { flex: 1; }
+.toast button.link { font-size: 15px; }
+.prisma th { text-align: left; font-weight: 500; width: 100%; }
+.prisma td { font-weight: 800; white-space: nowrap; }
+.tiny { font-size: 13px; }
+
+.screenone { max-width: 900px; margin: 0 auto; }
+.screenone .topline { display: flex; align-items: center; gap: 18px; margin-bottom: 14px; font-size: 16px; }
+.screenone .topline .homebtn { font-size: 17px; font-weight: 800; padding: 9px 20px; border-radius: 12px; }
+.screenone .topline .skip { margin-left: auto; }
+.screenone h1.ttl { font-size: 28px; line-height: 1.25; margin: 4px 0 6px; }
+.screenone .meta { color: var(--muted); font-size: 17px; margin: 0 0 6px; }
+.screenone .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 0 0 12px; }
+.screenone .abs { font-size: 18px; line-height: 1.55; }
+.screenone .sub { font-size: 15px; color: var(--muted); margin: 6px 0; }
+.screenone .fb { display: inline-block; margin-right: 12px; }
+.bigmarks { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0 10px; }
+.bigmarks button { font-size: 20px; font-weight: 800; padding: 14px 26px; border-radius: 14px; }
+.bigmarks button kbd { font-family: inherit; font-size: 13px; font-weight: 500; background: rgba(0, 0, 0, 0.08); border-radius: 6px; padding: 1px 7px; margin-left: 8px; }
+.bigmarks button.on.yes, .bigmarks button.yes:hover { background: var(--green); border-color: var(--green); color: #fff; }
+.bigmarks button.on.no, .bigmarks button.no:hover { background: var(--red); border-color: var(--red); color: #fff; }
+.bigmarks button.on.maybe, .bigmarks button.maybe:hover { background: var(--amber); border-color: var(--amber); color: #fff; }
+.bigmarks button:hover kbd { background: rgba(255, 255, 255, 0.25); }
+.screenone .others { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 18px; margin-top: 16px; }
+.screenone .others .vchips { margin: 0 10px; vertical-align: middle; }

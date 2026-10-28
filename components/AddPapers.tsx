@@ -23,16 +23,20 @@ const SOURCES = [
   "seed: Cipriano et al. 2023",
   "seed: Hall et al. 2016",
   "search: PsycINFO",
+  "search: Google Scholar",
   "search: ERIC",
   "search: PubMed",
+  "search: OpenAlex",
+  "search: Semantic Scholar",
   "search: ProQuest Dissertations",
+  "search: Scopus",
   "hand search or reference list",
   "author contact",
 ];
 
 // onAdded fires after every successful add, so the list behind the window can reload.
-export default function AddPapers({ onAdded }: { onAdded?: () => void }) {
-  const [mode, setMode] = useState<Mode>("upload");
+export default function AddPapers({ onAdded, stage = "master" }: { onAdded?: () => void; stage?: "search" | "master" }) {
+  const [mode, setMode] = useState<Mode>(stage === "search" ? "import" : "upload");
   const added = () => onAdded?.();
   return (
     <div>
@@ -43,10 +47,10 @@ export default function AddPapers({ onAdded }: { onAdded?: () => void }) {
           </button>
         ))}
       </div>
-      {mode === "upload" && <Upload onAdded={added} />}
-      {mode === "doi" && <ByDOI onAdded={added} />}
-      {mode === "import" && <Import onAdded={added} />}
-      {mode === "manual" && <Manual onAdded={added} />}
+      {mode === "upload" && <Upload onAdded={added} stage={stage} />}
+      {mode === "doi" && <ByDOI onAdded={added} stage={stage} />}
+      {mode === "import" && <Import onAdded={added} stage={stage} />}
+      {mode === "manual" && <Manual onAdded={added} stage={stage} />}
     </div>
   );
 }
@@ -64,7 +68,9 @@ function SourceSelect({ value, onChange }: { value: string; onChange: (v: string
 
 type Row = { name: string; status: string; kind: "wait" | "work" | "ok" | "dup" | "fail"; id?: string };
 
-function Upload({ onAdded }: { onAdded: () => void }) {
+type Stage = "search" | "master";
+
+function Upload({ onAdded, stage }: { onAdded: () => void; stage: Stage }) {
   const [source, setSource] = useState("upload");
   const [log, setLog] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -84,7 +90,7 @@ function Upload({ onAdded }: { onAdded: () => void }) {
         const res = await fetch(link.url, { method: "PUT", body: f, headers: { "Content-Type": "application/pdf", "x-upsert": "false" } });
         if (!res.ok) throw new Error(`the file was not accepted by storage (${res.status})`);
         upd("reading the text and looking up the title", "work");
-        const r = await finalizeUpload(link.path, f.name, undefined, source);
+        const r = await finalizeUpload(link.path, f.name, undefined, source, stage);
         if (!r.ok) throw new Error(r.error);
         const tail = r.textRead ? "" : " (no text could be read, probably a scan; use the PDF view)";
         if (r.duplicate) upd("already in the library" + tail, "dup", r.id);
@@ -125,7 +131,7 @@ function Upload({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function ByDOI({ onAdded }: { onAdded: () => void }) {
+function ByDOI({ onAdded, stage }: { onAdded: () => void; stage: Stage }) {
   const [doi, setDoi] = useState("");
   const [source, setSource] = useState("");
   const [hit, setHit] = useState<ParsedPaper | null>(null);
@@ -143,7 +149,7 @@ function ByDOI({ onAdded }: { onAdded: () => void }) {
   async function add() {
     if (!hit) return;
     setBusy(true);
-    const r = await createPaper({ ...hit, source: source || "doi lookup" });
+    const r = await createPaper({ ...hit, source: source || "doi lookup" }, stage);
     setLastId(r.id);
     if (!r.duplicate) onAdded();
     setMsg(r.duplicate ? "Already in the library. " : "Added. ");
@@ -166,7 +172,7 @@ function ByDOI({ onAdded }: { onAdded: () => void }) {
           <p style={{ fontSize: 19 }}><b>{hit.title}</b></p>
           <p className="muted">{hit.authors}</p>
           <p className="muted">{hit.journal} {hit.year ?? ""}</p>
-          <button className="primary big" onClick={add} disabled={busy}>Add to library</button>
+          <button className="primary big" onClick={add} disabled={busy}>{stage === "search" ? "Add to the search list" : "Add to the master list"}</button>
         </div>
       )}
       {msg && <p style={{ fontSize: 18 }}>{msg}{lastId && <Link href={`/papers/${lastId}`}>Open it</Link>}</p>}
@@ -175,7 +181,7 @@ function ByDOI({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function Import({ onAdded }: { onAdded: () => void }) {
+function Import({ onAdded, stage }: { onAdded: () => void; stage: Stage }) {
   const [source, setSource] = useState("");
   const [rows, setRows] = useState<ParsedPaper[]>([]);
   const [msg, setMsg] = useState("");
@@ -191,7 +197,7 @@ function Import({ onAdded }: { onAdded: () => void }) {
   }
   async function run() {
     setBusy(true);
-    const r = await importPapers(rows, source || "import");
+    const r = await importPapers(rows, source || "import", stage);
     setMsg(`Imported ${r.added}. Skipped ${r.skipped} already in the library.`);
     if (r.added > 0) onAdded();
     setRows([]);
@@ -204,7 +210,7 @@ function Import({ onAdded }: { onAdded: () => void }) {
         size="normal"
         accept=".ris,.txt,.csv"
         title="Drop an RIS or CSV file here"
-        hint="Exported from PsycINFO, ERIC, PubMed, ProQuest or Zotero. Or click to choose a file."
+        hint="Exported from PsycINFO, Google Scholar (via Publish or Perish), ProQuest, Scopus or Zotero. Or click to choose a file."
         onFiles={read}
       />
       <SourceSelect value={source} onChange={setSource} />
@@ -226,7 +232,7 @@ function Import({ onAdded }: { onAdded: () => void }) {
   );
 }
 
-function Manual({ onAdded }: { onAdded: () => void }) {
+function Manual({ onAdded, stage }: { onAdded: () => void; stage: Stage }) {
   const empty: ParsedPaper = { title: "", authors: "", year: null, journal: "", doi: "", abstract: "" };
   const [p, setP] = useState<ParsedPaper>(empty);
   const [source, setSource] = useState("");
@@ -241,7 +247,7 @@ function Manual({ onAdded }: { onAdded: () => void }) {
     setHits(j?.hits || []);
   }
   async function save() {
-    const r = await createPaper({ ...p, source: source || "manual" });
+    const r = await createPaper({ ...p, source: source || "manual" }, stage);
     setLastId(r.id);
     if (!r.duplicate) onAdded();
     setMsg(r.duplicate ? "Already in the library. " : "Added. ");
@@ -280,7 +286,7 @@ function Manual({ onAdded }: { onAdded: () => void }) {
         <label className="block" style={{ marginTop: 0 }}>Abstract</label>
         <textarea value={p.abstract} onChange={(e) => set("abstract", e.target.value)} style={{ minHeight: 120 }} />
       </div>
-      <div><button className="primary big" onClick={save} disabled={!p.title.trim() && !p.doi.trim()}>Add to library</button></div>
+      <div><button className="primary big" onClick={save} disabled={!p.title.trim() && !p.doi.trim()}>{stage === "search" ? "Add to the search list" : "Add to the master list"}</button></div>
       {msg && <p style={{ fontSize: 18 }}>{msg}{lastId && <Link href={`/papers/${lastId}`}>Open it</Link>}</p>}
       <SourceSelect value={source} onChange={setSource} />
     </div>
