@@ -134,7 +134,8 @@ function ncbiParams(): Record<string, string> {
 }
 
 async function pubmed(query: string, opts: SearchOpts): Promise<DbResult> {
-  const p = new URLSearchParams({ db: "pubmed", retmode: "json", retmax: String(opts.limit), term: query, ...ncbiParams() });
+  // sort=relevance asks for PubMed's best-match order; without it E-utilities return the most recent records first.
+  const p = new URLSearchParams({ db: "pubmed", retmode: "json", retmax: String(opts.limit), sort: "relevance", term: query, ...ncbiParams() });
   if (opts.yearFrom || opts.yearTo) {
     p.set("datetype", "pdat");
     p.set("mindate", String(opts.yearFrom || 1800));

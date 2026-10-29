@@ -108,7 +108,7 @@ export default function SearchPanel({ bank, terms, ideas, ideasError, members, m
       </div>
       {already && !busy && (
         <div className="note warn already" style={{ margin: "8px 0 0" }}>
-          <b>Already run</b> by {nameOf(already.lastBy)} <Ago iso={already.lastAt} /> in {already.dbs.map((d) => DB_LABEL[d] || d).join(", ")}: {already.found.toLocaleString()} found, {already.added} new{already.moved ? `, ${already.moved} moved to the master list` : ""}{already.runs > 1 ? ` (${already.runs} runs)` : ""}.
+          <b>Already run</b> by {nameOf(already.lastBy)} <Ago iso={already.lastAt} /> in {already.dbs.map((d) => DB_LABEL[d] || d).join(", ")}: {already.pulled.toLocaleString()} pulled, {already.added} new{already.moved ? `, ${already.moved} moved to the master list` : ""}{already.runs > 1 ? ` (${already.runs} runs)` : ""}.
           Running it again only picks up records the databases have added since. To cover new ground, change a term or add one.
         </div>
       )}
@@ -173,16 +173,21 @@ export default function SearchPanel({ bank, terms, ideas, ideasError, members, m
             {bank.length > 0 && (
               <table className="grid bankt">
                 <thead>
-                  <tr><th>Query</th><th>Runs</th><th>Databases</th><th>Last run</th><th>Found</th><th>New</th><th>In the search list</th><th>Moved to the master list</th><th></th></tr>
+                  <tr><th>Query</th><th>Runs</th><th>Databases, with what each reported on the last run<Help text="What each database says matches the query. A number in the millions means the words were read loosely (any of them, anywhere): put phrases in quotes and join blocks with AND. The app only ever pulls the top records per database, up to the limit you chose." /></th><th>Last run</th><th>Pulled<Help text="Records actually retrieved across all runs: at most the limit per database each time, after the same paper found twice is merged." /></th><th>New</th><th>In the search list</th><th>Moved to the master list</th><th></th></tr>
                 </thead>
                 <tbody>
                   {bank.map((r) => (
                     <tr key={r.key}>
                       <td className="q"><button type="button" className="link qbtn" onClick={() => setQ(r.query)} title="Put this query in the search box">{r.query}</button></td>
                       <td>{r.runs}</td>
-                      <td className="tiny">{r.dbs.map((d) => DB_LABEL[d] || d).join(", ")}{r.errors ? <span className="bad"> ({r.errors} failed)</span> : ""}</td>
+                      <td className="tiny perdb">
+                        {r.dbs.map((d) => {
+                          const x = r.perDb[d];
+                          return <span key={d} className="db">{DB_LABEL[d] || d} {x ? (x.error ? <span className="bad" title={x.error}>failed</span> : x.found.toLocaleString()) : "-"}</span>;
+                        })}
+                      </td>
                       <td className="nowrap tiny">{nameOf(r.lastBy)}, <Ago iso={r.lastAt} /></td>
-                      <td>{r.found.toLocaleString()}</td>
+                      <td>{r.pulled.toLocaleString()}</td>
                       <td>{r.added}</td>
                       <td>{r.inList}{r.out ? <span className="muted"> ({r.out} out)</span> : ""}</td>
                       <td><b>{r.moved}</b></td>

@@ -212,7 +212,7 @@ export async function buildDataset(): Promise<Dataset> {
   ]).rows;
   const bank: SearchLogRow[] = bankRows.map((r) => ({
     query: r.query, runs: r.runs, databases: r.dbs.map((d) => DB_LABEL[d] || d).join(", "), last_run_at: r.lastAt, last_run_by: name(r.lastBy),
-    found_latest_run: r.found, pulled: r.pulled, new_records: r.added, still_in_search_list: r.inList, screened_out: r.out, moved_to_master_list: r.moved, database_failures: r.errors,
+    found_latest_run: r.found, found_per_database: r.dbs.map((d) => `${DB_LABEL[d] || d}: ${r.perDb[d] ? (r.perDb[d].error ? "failed" : r.perDb[d].found) : "-"}`).join("; "), pulled: r.pulled, new_records: r.added, still_in_search_list: r.inList, screened_out: r.out, moved_to_master_list: r.moved, database_failures: r.errors,
   }));
   return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved, searches, bank };
 }
@@ -250,7 +250,8 @@ const SEARCH_DEFS: Record<string, string> = {
 
 const BANK_DEFS: Record<string, string> = {
   query: "The query, as last typed (case and spacing ignored when runs are grouped).", runs: "How many times it was run.", databases: "Every database it was sent to.",
-  last_run_at: "When it was last run.", last_run_by: "Who ran it last.", found_latest_run: "Records the databases reported on the latest run, summed across databases.",
+  last_run_at: "When it was last run.", last_run_by: "Who ran it last.", found_latest_run: "Records the databases reported on the latest run, summed across databases (loose queries read as any-of-these-words produce millions here).",
+  found_per_database: "The same, database by database, on the latest run.",
   pulled: "Records retrieved across all runs.", new_records: "Candidates it added to the search list across all runs.",
   still_in_search_list: "Its candidates still in the search list.", screened_out: "Of those, screened out at title and abstract.",
   moved_to_master_list: "Its candidates that moved to the master list: the yield of the query.", database_failures: "Database errors across runs.",

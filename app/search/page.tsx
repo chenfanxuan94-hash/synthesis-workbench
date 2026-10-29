@@ -204,7 +204,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
                 <td>
                   {(s.dbs || []).map((d) => {
                     const r = s.results?.[d];
-                    return <div key={d} className="tiny">{DB_LABEL[d] || d}: {r ? (r.error ? <span className="bad">failed</span> : <>{r.found.toLocaleString()} found, {r.pulled} pulled, {r.added} new</>) : "-"}</div>;
+                    return <div key={d} className="tiny">{DB_LABEL[d] || d}: {r ? (r.error ? <span className="bad">failed: {r.error}</span> : <>{r.found.toLocaleString()} found, {r.pulled} pulled, {r.added} new</>) : "-"}</div>;
                   })}
                 </td>
                 <td className="nowrap">{s.year_from || s.year_to ? `${s.year_from || ""} to ${s.year_to || ""}` : "any"}</td>

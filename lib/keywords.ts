@@ -15,6 +15,7 @@ export type BankRow = {
   lastAt: string;
   lastBy: string | null;
   found: number;            // records the databases reported on the latest run, summed
+  perDb: Record<string, { found: number; error: string | null }>;   // each database's own count on the latest run
   pulled: number;           // records retrieved across runs
   added: number;            // new candidates it brought in across runs
   inList: number;           // its candidates still in the search list
@@ -62,13 +63,15 @@ export function buildBank(searches: SearchRun[], papers: CandLike[]): { rows: Ba
     const per = s.results || {};
     const found = Object.values(per).reduce((n, r) => n + (r?.found || 0), 0);
     const errors = Object.values(per).filter((r) => r?.error).length;
-    const cur = rows.get(key) || { query: s.query, key, runs: 0, dbs: [], lastAt: s.run_at, lastBy: s.run_by, found: 0, pulled: 0, added: 0, inList: 0, out: 0, moved: 0, errors: 0 };
+    const cur = rows.get(key) || { query: s.query, key, runs: 0, dbs: [], lastAt: s.run_at, lastBy: s.run_by, found: 0, perDb: {}, pulled: 0, added: 0, inList: 0, out: 0, moved: 0, errors: 0 };
     cur.query = s.query;
     cur.runs++;
     for (const d of s.dbs || []) if (!cur.dbs.includes(d)) cur.dbs.push(d);
     cur.lastAt = s.run_at;
     cur.lastBy = s.run_by;
     cur.found = found;
+    cur.perDb = {};
+    for (const d of s.dbs || []) { const r = per[d]; cur.perDb[d] = { found: r?.found || 0, error: r?.error || (r ? null : "no answer") }; }
     cur.pulled += s.pulled || 0;
     cur.added += s.added || 0;
     cur.errors += errors;

@@ -717,3 +717,4 @@ table.bankt td.q { max-width: 520px; }
 .addidea input { font-size: 15px; padding: 6px 10px; }
 .note.already { font-size: 15px; }
 .bad { color: var(--red-ink); font-weight: 700; }
+.perdb .db { display: inline-block; margin-right: 10px; white-space: nowrap; }
