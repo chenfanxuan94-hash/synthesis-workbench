@@ -47,6 +47,7 @@ export function describeAction(action: string, detail: string | null): string {
     case "screen_decision": return detail ? `recorded the screening decision: ${detail}` : "cleared the screening decision";
     case "back_to_search": return "sent it back to the search list";
     case "ai_screen": return detail ? `asked the AI to pre-screen (${detail})` : "asked the AI to pre-screen";
+    case "keyword_idea": return detail ? `added a keyword to try: ${detail}` : "added a keyword to try";
     default: return detail ? `${action}: ${detail}` : action;
   }
 }

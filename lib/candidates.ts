@@ -3,6 +3,7 @@
 import { db } from "./supabase";
 import { selectAll } from "./db";
 import { screenStanding, needsMyScreen } from "./screening";
+import { buildBank, type BankRow, type TermCount } from "./keywords";
 import type { ScreenRow } from "@/components/ScreenTable";
 import type { AiScreen, FoundBy, Paper, Screen, ScreenStanding, SearchRun } from "./types";
 
@@ -18,6 +19,8 @@ export type CandList = {
   counts: { total: number; pending: number; mine: number; split: number; out: number; byHand: number; ai: { likely: number; unlikely: number; unclear: number; none: number } };
   movedFromSearch: number;   // papers now in the master list that came through screening
   masterTotal: number;
+  bank: BankRow[];           // the keyword bank: every distinct query run, with its yield
+  terms: TermCount[];        // single terms used across those queries
 };
 
 const LITE = "id,title,authors,year,journal,doi,pmid,source,pdf_path,found_by,keywords,cited_by,screen_decision,ai_screen,external_ids,created_at";
@@ -27,12 +30,12 @@ export async function loadCandidates(memberId: string): Promise<CandList> {
     selectAll<CandLite>("papers", LITE, { order: "created_at", ascending: false, eq: ["stage", "search"] }),
     selectAll<Screen>("screens", "id,paper_id,member_id,decision,reason,updated_at", { order: "updated_at" }),
     selectAll<SearchRun>("searches", "*", { order: "run_at", ascending: false }),
-    selectAll<{ id: string; screened_in_at: string | null }>("papers", "id,screened_in_at", { order: "created_at", eq: ["stage", "master"] }),
+    selectAll<{ id: string; screened_in_at: string | null; found_by: FoundBy[] | null }>("papers", "id,screened_in_at,found_by", { order: "created_at", eq: ["stage", "master"] }),
   ]);
   const empty: CandList = {
     ready: true, error: null, cands: [], searches: [],
     counts: { total: 0, pending: 0, mine: 0, split: 0, out: 0, byHand: 0, ai: { likely: 0, unlikely: 0, unclear: 0, none: 0 } },
-    movedFromSearch: 0, masterTotal: 0,
+    movedFromSearch: 0, masterTotal: 0, bank: [], terms: [],
   };
   const err = P.error || K.error || S.error || M.error;
   if (err) return { ...empty, ready: false, error: err };
@@ -53,6 +56,12 @@ export async function loadCandidates(memberId: string): Promise<CandList> {
     const v = (c.ai_screen as AiScreen | null)?.verdict;
     if (v === "likely" || v === "unlikely" || v === "unclear") out.counts.ai[v]++; else out.counts.ai.none++;
   }
+  const bank = buildBank(S.data, [
+    ...out.cands.map((x) => ({ found_by: x.c.found_by, stage: "search" as const, status: x.st.status })),
+    ...M.data.map((m) => ({ found_by: m.found_by, stage: "master" as const })),
+  ]);
+  out.bank = bank.rows;
+  out.terms = bank.terms;
   return out;
 }
 

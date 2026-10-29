@@ -71,3 +71,14 @@ create table if not exists settings (
 alter table screens enable row level security;
 alter table searches enable row level security;
 alter table settings enable row level security;
+
+-- Keywords the team plans to try (step 1). A keyword counts as done once a search with the
+-- same text has been run; the match is computed by the app, nothing is stored here for it.
+create table if not exists keyword_ideas (
+  id uuid primary key default gen_random_uuid(),
+  text text not null,
+  note text,
+  added_by uuid references members(id),
+  created_at timestamptz not null default now()
+);
+alter table keyword_ideas enable row level security;

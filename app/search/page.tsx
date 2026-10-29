@@ -1,10 +1,10 @@
 import Link from "next/link";
 import Help from "@/components/Help";
-import SearchBox from "@/components/SearchBox";
+import SearchPanel from "@/components/SearchPanel";
 import ScreenTable from "@/components/ScreenTable";
 import AiScreen from "@/components/AiScreen";
 import AddPapersModal from "@/components/AddPapersModal";
-import { logout, loadScreenCriteria } from "@/lib/actions";
+import { logout, loadScreenCriteria, loadKeywordIdeas } from "@/lib/actions";
 import { requireMember, allMembers } from "@/lib/session";
 import { loadCandidates, abstractsFor, toRow, type Cand } from "@/lib/candidates";
 import { SCREEN_RULE } from "@/lib/screening";
@@ -52,6 +52,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   const { st = "mine", q = "", db = "", k = "", ai = "", sort = "new", page = "1", add } = await searchParams;
   const list = await loadCandidates(me.id);
   const criteria = list.ready ? await loadScreenCriteria() : "";
+  const ideas = list.ready ? await loadKeywordIdeas() : { ideas: [], error: null };
 
   const qq = q.trim().toLowerCase();
   let cands = list.cands.filter((x) => {
@@ -117,7 +118,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
         </div>
       )}
 
-      <SearchBox lastQuery={list.searches[0]?.query} />
+      <SearchPanel bank={list.bank} terms={list.terms} ideas={ideas.ideas} ideasError={ideas.error} members={members} me={me} />
 
       <div className="nextbar live">
         <span className="eyebrow">Your next step</span>

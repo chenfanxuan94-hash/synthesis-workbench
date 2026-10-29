@@ -5,7 +5,9 @@ import { selectAll } from "./db";
 import { standing } from "./status";
 import { allMembers } from "./session";
 import { DB_LABEL } from "./search/dbs";
-import type { Coding, Effect, Member, Paper, SearchRun, Vote } from "./types";
+import { buildBank } from "./keywords";
+import { screenStanding } from "./screening";
+import type { Coding, Effect, FoundBy, Member, Paper, Screen, SearchRun, Vote } from "./types";
 
 export const COLUMNS: { key: string; label: string; def: string }[] = [
   { key: "effect_id", label: "effect_id", def: "Unique id of the effect row." },
@@ -101,6 +103,7 @@ export type Dataset = {
   memberNames: string[];
   codingsOfApproved: Coding[];
   searches: SearchLogRow[];     // every database search run in step 1, for the PRISMA record
+  bank: SearchLogRow[];         // the keyword bank: one row per distinct query with its yield
 };
 
 export type SearchLogRow = Record<string, string | number | null>;
@@ -114,6 +117,13 @@ export async function buildDataset(): Promise<Dataset> {
     selectAll<SearchRun>("searches", "*", { order: "run_at" }),
     allMembers(),
   ]);
+  // The search list, only as far as the keyword bank needs it: which query found each candidate and whether it was screened out.
+  const [CS, K] = await Promise.all([
+    selectAll<{ id: string; found_by: FoundBy[] | null; screen_decision: "in" | "out" | null }>("papers", "id,found_by,screen_decision", { order: "created_at", eq: ["stage", "search"] }),
+    selectAll<Screen>("screens", "id,paper_id,member_id,decision,reason,updated_at", { order: "updated_at" }),
+  ]);
+  const marksBy = new Map<string, Screen[]>();
+  for (const k of K.data) (marksBy.get(k.paper_id) || marksBy.set(k.paper_id, []).get(k.paper_id)!).push(k);
   const M = new Map(members.map((m) => [m.id, m.name]));
   const name = (id: string | null | undefined) => (id ? M.get(id) ?? null : null);
   const searches: SearchLogRow[] = [];
@@ -196,7 +206,15 @@ export async function buildDataset(): Promise<Dataset> {
       rows.push(row);
     }
   }
-  return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved, searches };
+  const bankRows = buildBank(S.data, [
+    ...CS.data.map((c) => ({ found_by: c.found_by, stage: "search" as const, status: screenStanding(c, marksBy.get(c.id) || []).status })),
+    ...P.data.map((p) => ({ found_by: p.found_by, stage: "master" as const })),
+  ]).rows;
+  const bank: SearchLogRow[] = bankRows.map((r) => ({
+    query: r.query, runs: r.runs, databases: r.dbs.map((d) => DB_LABEL[d] || d).join(", "), last_run_at: r.lastAt, last_run_by: name(r.lastBy),
+    found_latest_run: r.found, pulled: r.pulled, new_records: r.added, still_in_search_list: r.inList, screened_out: r.out, moved_to_master_list: r.moved, database_failures: r.errors,
+  }));
+  return { rows, papers, approvedPapers, approvedDone, papersWithRows: withRows.size, memberNames: members.map((m) => m.name), codingsOfApproved, searches, bank };
 }
 
 export function toCSV(rows: DatasetRow[]): string {
@@ -230,7 +248,15 @@ const SEARCH_DEFS: Record<string, string> = {
   already_known: "Retrieved records already in the library.", error: "Set when the database failed to answer.",
 };
 
-// Excel workbook: Effects (the analysis file), Papers (the master list with votes), Search log (step 1), Codebook.
+const BANK_DEFS: Record<string, string> = {
+  query: "The query, as last typed (case and spacing ignored when runs are grouped).", runs: "How many times it was run.", databases: "Every database it was sent to.",
+  last_run_at: "When it was last run.", last_run_by: "Who ran it last.", found_latest_run: "Records the databases reported on the latest run, summed across databases.",
+  pulled: "Records retrieved across all runs.", new_records: "Candidates it added to the search list across all runs.",
+  still_in_search_list: "Its candidates still in the search list.", screened_out: "Of those, screened out at title and abstract.",
+  moved_to_master_list: "Its candidates that moved to the master list: the yield of the query.", database_failures: "Database errors across runs.",
+};
+
+// Excel workbook: Effects (the analysis file), Papers (the master list with votes), Search log and Keyword bank (step 1), Codebook.
 export async function toXLSX(ds: Dataset): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "CHHSR Meta Analysis Portal";
@@ -253,11 +279,18 @@ export async function toXLSX(ds: Dataset): Promise<Buffer> {
   for (const r of ds.searches) wsl.addRow(searchKeys.map((k) => (r[k] === undefined ? null : r[k])));
   styleHeader(wsl);
 
+  const wkb = wb.addWorksheet("Keyword bank");
+  const bankKeys = Object.keys(BANK_DEFS);
+  wkb.columns = bankKeys.map((k) => ({ header: k, key: k, width: k === "query" ? 60 : Math.min(24, Math.max(10, k.length + 2)) }));
+  for (const r of ds.bank) wkb.addRow(bankKeys.map((k) => (r[k] === undefined ? null : r[k])));
+  styleHeader(wkb);
+
   const wc = wb.addWorksheet("Codebook");
   wc.columns = [{ header: "sheet", key: "sheet", width: 10 }, { header: "column", key: "column", width: 30 }, { header: "definition", key: "definition", width: 110 }];
   for (const c of COLUMNS) wc.addRow(["Effects", c.label, c.def]);
   for (const k of paperKeys) wc.addRow(["Papers", k, PAPER_DEFS[k] || (k.startsWith("vote_") ? `${k.slice(5)}'s vote, with the exclusion reason in brackets.` : "")]);
   for (const k of searchKeys) wc.addRow(["Search log", k, SEARCH_DEFS[k]]);
+  for (const k of bankKeys) wc.addRow(["Keyword bank", k, BANK_DEFS[k]]);
   styleHeader(wc);
 
   const out = await wb.xlsx.writeBuffer();

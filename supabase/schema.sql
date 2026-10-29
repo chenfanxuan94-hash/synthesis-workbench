@@ -197,6 +197,16 @@ create table if not exists activity (
 create index if not exists activity_paper_idx on activity (paper_id, created_at desc);
 create index if not exists activity_time_idx on activity (created_at desc);
 
+-- Keywords the team plans to try (step 1). A keyword counts as done once a search with the
+-- same text has been run; the match is computed by the app, nothing is stored here for it.
+create table if not exists keyword_ideas (
+  id uuid primary key default gen_random_uuid(),
+  text text not null,
+  note text,
+  added_by uuid references members(id),
+  created_at timestamptz not null default now()
+);
+
 -- Lock the tables down. The app uses the service role key on the server only,
 -- which bypasses RLS. With RLS on and no policies, the anon key can read nothing.
 alter table members enable row level security;
@@ -208,6 +218,7 @@ alter table activity enable row level security;
 alter table screens enable row level security;
 alter table searches enable row level security;
 alter table settings enable row level security;
+alter table keyword_ideas enable row level security;
 
 -- Private bucket for PDFs
 insert into storage.buckets (id, name, public)

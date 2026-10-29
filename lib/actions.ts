@@ -14,6 +14,7 @@ import { DEFAULT_SCREEN_CRITERIA } from "./config";
 import { screenStanding, titleKey } from "./screening";
 import { runSearch, type RunSummary, MAX_PER_DB } from "./search/run";
 import { isDb, type Db } from "./search/dbs";
+import type { KeywordIdea } from "./keywords";
 import type { Decision, Screen, ScreenMark } from "./types";
 
 export type Stage = "search" | "master";
@@ -638,6 +639,34 @@ export async function backToSearch(paperId: string): Promise<Result> {
   await d.from("screens").delete().eq("paper_id", paperId);
   await log(paperId, me.id, "back_to_search");
   refreshPaper(paperId);
+  return { ok: true };
+}
+
+// ---------- step 1: keyword bank ----------
+
+// The shared list of keywords still to try. A missing table (migrate_v4.sql not run) comes back as an error string.
+export async function loadKeywordIdeas(): Promise<{ ideas: KeywordIdea[]; error: string | null }> {
+  const { data, error } = await db().from("keyword_ideas").select("id,text,note,added_by,created_at").order("created_at", { ascending: true });
+  if (error) return { ideas: [], error: error.message };
+  return { ideas: (data || []) as KeywordIdea[], error: null };
+}
+
+export async function addKeywordIdea(text: string, note: string): Promise<Result> {
+  const me = await requireMember();
+  const t = String(text || "").replace(/\s+/g, " ").trim().slice(0, 500);
+  if (!t) return { ok: false, error: "Type the keyword or query first." };
+  const { error } = await db().from("keyword_ideas").insert({ text: t, note: String(note || "").trim().slice(0, 500) || null, added_by: me.id });
+  if (error) return { ok: false, error: /keyword_ideas/i.test(error.message) ? "The database has not been updated for this version yet: run supabase/migrate_v4.sql in Supabase." : error.message };
+  await log(null, me.id, "keyword_idea", t);
+  revalidatePath("/search");
+  return { ok: true };
+}
+
+export async function removeKeywordIdea(id: string): Promise<Result> {
+  await requireMember();
+  const { error } = await db().from("keyword_ideas").delete().eq("id", id);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/search");
   return { ok: true };
 }
 
