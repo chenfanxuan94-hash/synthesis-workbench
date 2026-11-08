@@ -9,7 +9,7 @@ import AiDraft from "./AiDraft";
 import EffectForm, { type Selection } from "./EffectForm";
 import { DoneBox, EXTRACTABLE } from "./CodeTab";
 import { deleteEffect, saveEffect } from "@/lib/actions";
-import { computeEffect } from "@/lib/effects";
+import { computeEffect, needsDirectionCheck } from "@/lib/effects";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS, TIERS } from "@/lib/config";
 import { STATUS_LABEL } from "@/lib/status";
 import Ago from "./Ago";
@@ -211,7 +211,8 @@ export default function EffectsTab({ paper, me, members, effects, coding, s, tas
                 <tr key={e.id}>
                   <td>{OUTCOME_FAMILIES[e.outcome_family]}<br />{e.outcome_name || ""}{e.timepoint ? ` (${e.timepoint})` : ""}<div className="sub">{e.page ? `p. ${e.page} ` : ""}{e.source_label || ""}</div></td>
                   <td>{GROUP_DIMENSIONS[e.group_dimension]}{e.group_dimension === "other" ? `: ${e.marginalized_group} vs ${e.comparison_group}` : ""}</td>
-                  <td className="nowrap">{e.delta === null ? <span className="pill split">incomplete</span> : `${fmt(e.delta)} (${fmt(e.var_delta !== null ? Math.sqrt(e.var_delta) : null)})`}</td>
+                  <td className="nowrap">{e.delta === null ? <span className="pill split">incomplete</span> : `${fmt(e.delta)} (${fmt(e.var_delta !== null ? Math.sqrt(e.var_delta) : null)})`}
+                    {needsDirectionCheck(e) && <div><span className="pill split">check the direction</span><Help text="This interaction row was saved before the app asked which group the program helped more. Open it with Edit, choose the group the paper says gained more, and save." /></div>}</td>
                   <td>
                     <div className="sub" style={{ marginTop: 0 }}>
                       {e.ai_assisted && <span className="pill ai">AI draft</span>}{e.ai_assisted ? " checked and saved by " : "entered by "}{nameOf(e.entered_by)}
@@ -277,6 +278,9 @@ function DraftCard({ c, error, busy, editingThis, onAdd, onEdit, onSkip }: { c: 
       )}
       {c.tier === "subgroup" && <div className="mono">{c.marginalized_group}: {n(c.sg_d_m)} (SE {n(c.sg_se_m)}) &nbsp; {c.comparison_group}: {n(c.sg_d_c)} (SE {n(c.sg_se_c)})</div>}
       {c.tier === "interaction" && <div className="mono">interaction {n(c.int_coef)} (SE {n(c.int_se)}), {c.int_scale}</div>}
+      {c.tier === "interaction" && (c.int_direction
+        ? <div className="dir">Helped more: {c.int_direction === "marginalized" ? c.marginalized_group || "marginalized group" : c.int_direction === "comparison" ? c.comparison_group || "comparison group" : "not stated, sign read as printed"}</div>
+        : <div className="dir need">Helped more: not clear from the paper. Choose it with Edit, then add.</div>)}
       <div className="sub">{c.page ? `p. ${c.page} ` : ""}{c.source_label}{c.quote ? <> &middot; <i>&quot;{c.quote.length > 220 ? c.quote.slice(0, 220) + "..." : c.quote}&quot;</i></> : ""}</div>
       {c.caution && <div className="caution">AI notes: {c.caution}</div>}
       {error && <div className="err">Could not add: {error}</div>}

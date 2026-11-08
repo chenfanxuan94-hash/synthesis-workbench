@@ -22,6 +22,26 @@ export type EffectNumbers = {
   c_c_n?: number | null; c_c_mean?: number | null; c_c_sd?: number | null; c_c_events?: number | null;
   sg_d_m?: number | null; sg_se_m?: number | null; sg_d_c?: number | null; sg_se_c?: number | null;
   int_coef?: number | null; int_se?: number | null; int_scale?: string | null;
+  // Interaction rows only. The printed sign of an interaction term depends on how the paper
+  // coded the groups and the arms, so the direction cannot be read from higher_is_worse alone.
+  // marginalized: the paper says the program helped the marginalized group more (delta = +|coef|)
+  // comparison: the paper says the program helped the comparison group more (delta = -|coef|)
+  // as_coded: the printed term is program x marginalized group on the outcome scale (delta = sign * coef)
+  int_direction?: IntDirection | "" | null;
+};
+
+export type IntDirection = "marginalized" | "comparison" | "as_coded";
+
+export const INT_DIRECTIONS: Record<IntDirection, string> = {
+  marginalized: "The paper says the program helped the marginalized group more",
+  comparison: "The paper says the program helped the comparison group more",
+  as_coded: "Not stated. The printed term is program x marginalized group",
+};
+
+const DIR_NOTES: Record<IntDirection, string> = {
+  marginalized: "Direction from the paper's text: the program helped the marginalized group more.",
+  comparison: "Direction from the paper's text: the program helped the comparison group more.",
+  as_coded: "Direction from the printed sign, read as program x marginalized group on the outcome.",
 };
 
 export type Computed = {
@@ -69,11 +89,17 @@ export function computeEffect(e: EffectNumbers): Computed {
     const se = num(e.int_se);
     if (coef === null || se === null) return { ...empty, compute_note: "Interaction coefficient and SE are required." };
     if (e.int_scale !== "standardized") notes.push("Interaction coefficient is on the raw outcome scale; not comparable to SMD rows without conversion.");
+    const dir = e.int_direction || null;
+    if (dir !== "marginalized" && dir !== "comparison" && dir !== "as_coded") {
+      return { ...empty, compute_note: "Choose which group the paper says the program helped more, so the app can set the direction." };
+    }
+    const delta = dir === "marginalized" ? Math.abs(coef) : dir === "comparison" ? -Math.abs(coef) : sign * coef;
+    notes.unshift(DIR_NOTES[dir]);
     return {
       ...empty,
-      delta: r(sign * coef),
+      delta: r(delta),
       var_delta: r(se * se),
-      compute_note: notes.join(" ") || null,
+      compute_note: notes.join(" "),
     };
   }
 
@@ -179,4 +205,18 @@ export function computeEffect(e: EffectNumbers): Computed {
 
 export function se(v: number | null): number | null {
   return v === null || v < 0 ? null : Math.sqrt(v);
+}
+
+// Rebuild the direction choice for a saved interaction row. The choice is not a column of its
+// own: it is recorded in compute_note, and the stored delta follows from it. Rows saved before
+// the choice existed return "", so the person has to confirm the direction when they reopen the row.
+export function recoverIntDirection(src: Record<string, any>): IntDirection | "" {
+  if (src.tier !== "interaction") return "";
+  const note = String(src.compute_note || "");
+  for (const k of Object.keys(DIR_NOTES) as IntDirection[]) if (note.includes(DIR_NOTES[k])) return k;
+  return "";
+}
+
+export function needsDirectionCheck(src: Record<string, any>): boolean {
+  return src.tier === "interaction" && src.delta !== null && src.delta !== undefined && recoverIntDirection(src) === "";
 }
