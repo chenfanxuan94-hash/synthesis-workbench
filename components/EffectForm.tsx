@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Help from "./Help";
 import { saveEffect } from "@/lib/actions";
-import { computeEffect } from "@/lib/effects";
+import { computeEffect, INT_DIRECTIONS, recoverIntDirection } from "@/lib/effects";
 import { numbersIn } from "@/lib/parsers";
 import { OUTCOME_FAMILIES, GROUP_DIMENSIONS, TIERS } from "@/lib/config";
 import type { Effect } from "@/lib/types";
@@ -40,7 +40,7 @@ function blank(): Record<string, any> {
   const v: Record<string, any> = {
     outcome_family: "engagement", outcome_name: "", outcome_type: "continuous", higher_is_worse: false, timepoint: "post-test",
     group_dimension: "black_white", marginalized_group: "Black", comparison_group: "White", tier: "cells",
-    int_scale: "raw", source_label: "", quote: "", notes: "",
+    int_scale: "raw", int_direction: "", source_label: "", quote: "", notes: "",
   };
   for (const k of NUM_KEYS) v[k] = "";
   return v;
@@ -54,6 +54,7 @@ function fromRecord(src: Record<string, any>): Record<string, any> {
     b[k] = typeof b[k] === "boolean" ? Boolean(val) : String(val);
   }
   b.higher_is_worse = Boolean(src.higher_is_worse);
+  if (!b.int_direction) b.int_direction = recoverIntDirection(src);
   return b;
 }
 
@@ -245,6 +246,13 @@ export default function EffectForm({ paperId, effect, initial, aiDraft, selectio
             <label>Scale<Help text="Standardized if the paper says the outcome was standardized (in SD units). Otherwise raw. If unsure, choose raw and add a note." /></label>
             <select value={v.int_scale} onChange={(e) => set("int_scale", e.target.value)}>
               <option value="raw">raw</option><option value="standardized">standardized</option>
+            </select>
+          </div>
+          <div>
+            <label>Which group did the program help more?<Help text="The sign of an interaction term depends on how the paper coded the groups and the arms, so the app does not guess it. Read the paper's own sentence about who gained more (for example: suspensions fell for Black students and not for others). Choose Not stated only when the paper does not say and the printed term is program x marginalized group." /></label>
+            <select value={v.int_direction} onChange={(e) => set("int_direction", e.target.value)} className={v.int_direction ? "" : "need"}>
+              <option value="">Choose one</option>
+              {(Object.keys(INT_DIRECTIONS) as (keyof typeof INT_DIRECTIONS)[]).map((k) => <option key={k} value={k}>{INT_DIRECTIONS[k]}</option>)}
             </select>
           </div>
         </div>

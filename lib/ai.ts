@@ -28,6 +28,7 @@ export type Candidate = {
   c_c_n: number | null; c_c_mean: number | null; c_c_sd: number | null; c_c_events: number | null;
   sg_d_m: number | null; sg_se_m: number | null; sg_d_c: number | null; sg_se_c: number | null;
   int_coef: number | null; int_se: number | null; int_scale: "raw" | "standardized";
+  int_direction: "marginalized" | "comparison" | "as_coded" | null;
   page: number | null;
   source_label: string;
   quote: string;
@@ -64,6 +65,8 @@ Rules:
 12. Report at most 25 candidates in one answer; if the material holds more, say so in summary so the person can ask again for the rest.
 13. confidence: "high" when every number was clearly legible and the table structure was unambiguous; "medium" when a label or column had to be interpreted; "low" when groups, arms, or columns were unclear. Explain any interpretation in caution.
 
+14. For interaction rows, int_direction records which group the program helped more, because the printed sign depends on how the paper coded the groups and the arms. Use "marginalized" when the paper's text says the program helped the marginalized group more (for example their suspensions fell more, or the gap narrowed), "comparison" when it says the program helped the comparison group more, and "as_coded" only when the paper does not say and the printed term is clearly program x marginalized group. Use null when you cannot tell, and say why in caution. Quote the sentence that states the direction. Leave int_direction null for other tiers.
+
 Never invent a result to be helpful. An empty list is a correct answer when the paper does not report results by group and condition.`;
 
 const numberOrNull = { type: ["number", "null"] };
@@ -95,6 +98,7 @@ const TOOL = {
             sg_d_m: numberOrNull, sg_se_m: numberOrNull, sg_d_c: numberOrNull, sg_se_c: numberOrNull,
             int_coef: numberOrNull, int_se: numberOrNull,
             int_scale: { type: "string", enum: ["raw", "standardized"] },
+            int_direction: { type: ["string", "null"], enum: ["marginalized", "comparison", "as_coded", null] },
             page: { type: ["integer", "null"] },
             source_label: { type: "string" },
             quote: { type: "string" },
@@ -134,6 +138,7 @@ export function normalizeCandidate(raw: any): Candidate {
     comparison_group: String(raw?.comparison_group || "").slice(0, 80),
     tier: oneOf(raw?.tier, ["cells", "subgroup", "interaction"] as const, "cells"),
     int_scale: oneOf(raw?.int_scale, ["raw", "standardized"] as const, "raw"),
+    int_direction: raw?.tier === "interaction" && ["marginalized", "comparison", "as_coded"].includes(raw?.int_direction) ? raw.int_direction : null,
     page: num(raw?.page) === null ? null : Math.round(num(raw?.page)!),
     source_label: String(raw?.source_label || "").slice(0, 80),
     quote: String(raw?.quote || "").slice(0, 2000),

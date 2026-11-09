@@ -478,7 +478,10 @@ export async function saveEffect(paperId: string, effectId: string | null, field
     row[k] = v === "" || v === undefined ? null : v;
   }
   row.higher_is_worse = fields.higher_is_worse === true || fields.higher_is_worse === "true";
-  const computed = computeEffect(row as any);
+  // The direction choice for interaction rows is used for the calculation and recorded in
+  // compute_note. It is not a column, so it is not written to the row itself.
+  const dir = typeof fields.int_direction === "string" ? fields.int_direction : null;
+  const computed = computeEffect({ ...(row as any), int_direction: dir });
   Object.assign(row, computed);
   const label = [fields.outcome_name, fields.timepoint].filter(Boolean).join(", ") || String(fields.outcome_family || "");
 
